@@ -10,15 +10,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Implémentation concrète de GameSearch pour le jeu du Puissance 4.
- * Fait le pont entre la théorie vue en cours (GameSearch, max_Value, min_Value)
- * et le moteur du Puissance 4 (Connect4Position).
+ * Classe concrete Connect4Search : fait le pont entre le framework abstrait GameSearch 
+ * et la logique specifique du Puissance 4.
  * 
- * @author Groupe Devoir 2 - IA
+ * Responsabilites du Profil 1 :
+ * 1. Implementer les methodes abstraites heritees de GameSearch.
+ * 2. Ordonnancer l'exploration des colonnes (centre d'abord : 3, 2, 4, 1, 5, 0, 6) 
+ *    pour maximiser l'efficacite des coupures Alpha et Beta.
+ * 3. Fournir la methode de calcul du meilleur coup tant pour la Machine que pour l'Aide au joueur.
+ * 
+ * @author Profil 1 - Lead IA & Algorithmes de Recherche
  */
 public class Connect4Search extends GameSearch {
 
-    private int searchMaxDepth = 4; // Profondeur par défaut (Moyen)
+    /** Profondeur maximale de recherche dynamique */
+    private int searchMaxDepth = 4;
+
+    /** Ordre d'exploration optimise : du centre vers les extremites */
+    private static final int[] OPTIMAL_COLUMN_ORDER = {3, 2, 4, 1, 5, 0, 6};
 
     public void setSearchMaxDepth(int depth) {
         this.searchMaxDepth = depth;
@@ -65,9 +74,8 @@ public class Connect4Search extends GameSearch {
         int piece = (player == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
 
         List<Position> successors = new ArrayList<>();
-        // Parcourir les colonnes (dans l'ordre 3, 2, 4, 1, 5, 0, 6 pour optimiser l'élagage alpha-bêta)
-        int[] columnOrder = {3, 2, 4, 1, 5, 0, 6};
-        for (int col : columnOrder) {
+        // Exploration par ordre de colonnes optimise (favorise le centre pour les coupures alpha-beta)
+        for (int col : OPTIMAL_COLUMN_ORDER) {
             if (pos.isValidMove(col)) {
                 successors.add(pos.playMove(col, piece));
             }
@@ -90,57 +98,85 @@ public class Connect4Search extends GameSearch {
     }
 
     /**
-     * Recherche le meilleur coup à jouer pour le joueur donné en utilisant
-     * la stratégie et la profondeur spécifiées.
+     * Calcule le meilleur coup a la racine de l'arbre de recherche.
      * 
-     * @param pos Position actuelle
-     * @param forPlayer Joueur qui doit jouer (PROGRAM pour la machine, HUMAN pour l'aide au joueur)
-     * @param depth Profondeur maximale
-     * @param useAlphaBeta true pour Alpha-Bêta (Slide 19), false pour Minimax
-     * @return Le meilleur Connect4Move calculé
+     * Cette methode sert a la fois pour :
+     * 1. Le tour de la MACHINE (forPlayer == PROGRAM, false) : recherche du coup maximisant l'utilite IA.
+     * 2. La demande d'AIDE AU JOUEUR (forPlayer == HUMAN, true) : recherche du coup optimal pour le joueur humain.
+     * 
+     * @param pos Position courante de la grille
+     * @param forPlayer PROGRAM (false) pour la machine, HUMAN (true) pour le joueur
+     * @param depth Profondeur maximale d'anticipation
+     * @param useAlphaBeta true pour activer l'elagage Alpha-Beta (Slide 19), false pour Minimax classique
+     * @return Le Connect4Move le plus pertinent calcule
      */
     public Connect4Move computeBestMove(Connect4Position pos, boolean forPlayer, int depth, boolean useAlphaBeta) {
         this.searchMaxDepth = depth;
-        int piece = (forPlayer == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
+        int playerPiece = (forPlayer == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
+        int opponentPiece = (playerPiece == Connect4Position.RED) ? Connect4Position.YELLOW : Connect4Position.RED;
 
         Connect4Move bestMove = null;
         float bestVal = (forPlayer == PROGRAM) ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
 
-        // Ordre d'exploration favorisant le centre pour de meilleurs élagages
-        int[] columnOrder = {3, 2, 4, 1, 5, 0, 6};
-
-        for (int col : columnOrder) {
+        // Etape 1 : Verification prioritaire d'un coup gagnant immediat en 1 coup
+        for (int col : OPTIMAL_COLUMN_ORDER) {
             if (pos.isValidMove(col)) {
-                Connect4Position succ = pos.playMove(col, piece);
-
-                // Victoire immédiate en 1 coup
-                if (succ.checkWin(piece)) {
-                    return new Connect4Move(col);
+                Connect4Position simulated = pos.playMove(col, playerPiece);
+                if (simulated.checkWin(playerPiece)) {
+                    return new Connect4Move(col); // Coup gagnant direct trouve
                 }
+            }
+        }
 
+        // Etape 2 : Verification prioritaire de blocage d'une victoire immediate adverse en 1 coup
+        for (int col : OPTIMAL_COLUMN_ORDER) {
+            if (pos.isValidMove(col)) {
+                Connect4Position opponentWinning = pos.playMove(col, opponentPiece);
+                if (opponentWinning.checkWin(opponentPiece)) {
+                    return new Connect4Move(col); // Blocage vital immediat
+                }
+            }
+        }
+
+        // Etape 3 : Exploration arborescente (Alpha-Beta Slide 19 ou Minimax)
+        for (int col : OPTIMAL_COLUMN_ORDER) {
+            if (pos.isValidMove(col)) {
+                Connect4Position succ = pos.playMove(col, playerPiece);
                 float val;
+
                 if (forPlayer == PROGRAM) {
+                    // La machine cherche a maximiser ; on appelle min_Value au niveau suivant
                     if (useAlphaBeta) {
                         val = min_Value(succ, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, 1);
                     } else {
                         val = minimax(succ, HUMAN, 1, false);
                     }
+
                     if (val > bestVal || bestMove == null) {
                         bestVal = val;
                         bestMove = new Connect4Move(col);
                     }
                 } else {
-                    // Pour le joueur humain (mode Aide)
+                    // L'humain (demande d'aide) cherche a maximiser ses chances
                     if (useAlphaBeta) {
                         val = max_Value(succ, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, 1);
                     } else {
                         val = minimax(succ, PROGRAM, 1, true);
                     }
-                    // Pour l'humain, on cherche à maximiser son propre score
+
                     if (val < bestVal || bestMove == null) {
                         bestVal = val;
                         bestMove = new Connect4Move(col);
                     }
+                }
+            }
+        }
+
+        // Repli de secours : retourner la premiere colonne valide disponible
+        if (bestMove == null) {
+            for (int col = 0; col < Connect4Position.COLS; col++) {
+                if (pos.isValidMove(col)) {
+                    return new Connect4Move(col);
                 }
             }
         }
