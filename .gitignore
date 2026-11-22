@@ -1,0 +1,25 @@
+# Binaires et compilation Java
+*.class
+bin/
+out/
+build/
+*.jar
+*.war
+
+# IDEs & Éditeurs
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Sauvegardes temporaires locales (garder le dossier via .gitkeep)
+saves/*.dat
+saves/*.json
+!saves/.gitkeep
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
+Desktop.ini
