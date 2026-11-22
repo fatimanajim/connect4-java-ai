@@ -1,83 +1,57 @@
 package connect4.storage;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Gestionnaire de persistance pour sauvegarder et restituer l'état d'une partie.
- * Gère l'écriture et la lecture de fichiers binaires sérialisés (.dat).
- * 
- * @author Groupe Devoir 2 - IA
+/** 
+ * Sauvegarde et restitution d'une partie dans le dossier "saves/" (sérialisation Java). 
+ * Implémenté par le Profil 2.
  */
 public class GameSaveManager {
-
-    private static final String DEFAULT_SAVE_DIR = "saves";
-
-    public GameSaveManager() {
-        File dir = new File(DEFAULT_SAVE_DIR);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-    }
+    private static final String DIR = "saves";
+    private static final String EXT = ".dat";
 
     /**
-     * Sauvegarde une partie sous le nom de fichier spécifié.
+     * Sauvegarde l'état de la partie.
+     * @param state état à écrire
+     * @param name  nom de la sauvegarde (sans extension)
+     * @throws IOException si l'écriture échoue
      */
-    public boolean save(GameState state, String filename) {
-        if (!filename.endsWith(".dat")) {
-            filename += ".dat";
-        }
-        File targetFile = new File(DEFAULT_SAVE_DIR, filename);
-
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(targetFile))) {
-            oos.writeObject(state);
-            return true;
-        } catch (Exception e) {
-            System.err.println("Erreur lors de la sauvegarde : " + e.getMessage());
-            return false;
+    public static void save(GameState state, String name) throws IOException {
+        File dir = new File(DIR);
+        if (!dir.exists() && !dir.mkdirs())
+            throw new IOException("Impossible de créer le dossier " + DIR);
+        try (ObjectOutputStream out = new ObjectOutputStream(
+                new FileOutputStream(new File(dir, clean(name) + EXT)))) {
+            out.writeObject(state);
         }
     }
 
     /**
      * Restitue une partie sauvegardée.
+     * @throws IOException si le fichier est absent ou corrompu
      */
-    public GameState load(String filename) {
-        if (!filename.endsWith(".dat")) {
-            filename += ".dat";
-        }
-        File targetFile = new File(DEFAULT_SAVE_DIR, filename);
-
-        if (!targetFile.exists()) {
-            System.err.println("Fichier de sauvegarde introuvable : " + targetFile.getAbsolutePath());
-            return null;
-        }
-
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(targetFile))) {
-            return (GameState) ois.readObject();
-        } catch (Exception e) {
-            System.err.println("Erreur lors de la restitution de la partie : " + e.getMessage());
-            return null;
+    public static GameState load(String name) throws IOException {
+        File f = new File(DIR, clean(name) + EXT);
+        if (!f.exists()) throw new FileNotFoundException("Sauvegarde introuvable : " + name);
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(f))) {
+            return (GameState) in.readObject();
+        } catch (ClassNotFoundException | ClassCastException e) {
+            throw new IOException("Fichier de sauvegarde invalide.", e);
         }
     }
 
-    /**
-     * Liste l'ensemble des fichiers de sauvegarde disponibles.
-     */
-    public List<String> listSaves() {
-        List<String> saveFiles = new ArrayList<>();
-        File dir = new File(DEFAULT_SAVE_DIR);
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".dat"));
-
-        if (files != null) {
-            for (File file : files) {
-                saveFiles.add(file.getName());
-            }
-        }
-        return saveFiles;
+    /** @return les noms des sauvegardes disponibles (pour le menu "Charger") */
+    public static List<String> listSaves() {
+        List<String> names = new ArrayList<>();
+        File[] files = new File(DIR).listFiles((d, n) -> n.endsWith(EXT));
+        if (files != null)
+            for (File f : files)
+                names.add(f.getName().substring(0, f.getName().length() - EXT.length()));
+        return names;
     }
+
+    /** Retire les caractères dangereux d'un nom de fichier. */
+    private static String clean(String name) { return name.replaceAll("[^A-Za-z0-9_-]", "_"); }
 }

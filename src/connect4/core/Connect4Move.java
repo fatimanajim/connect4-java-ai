@@ -1,36 +1,22 @@
 package connect4.core;
 
-import java.io.Serializable;
-
-/**
- * Représente un coup spécifique dans le jeu du Puissance 4 (choix d'une colonne).
- * Hérite de la classe abstraite Move vue en classe.
- * 
- * @author Groupe Devoir 2 - IA
+/** 
+ * Un coup au Puissance 4 : le choix d'une colonne (indice de 0 à 6). 
+ * Implémenté par le Profil 2.
  */
-public class Connect4Move extends Move implements Serializable {
+public class Connect4Move extends Move {
     private static final long serialVersionUID = 1L;
-    
-    private final int column; // Colonne comprise entre 0 et 6
 
-    /**
-     * Constructeur d'un coup de Puissance 4.
-     * @param column L'indice de la colonne (0 à 6)
-     */
-    public Connect4Move(int column) {
-        this.column = column;
-    }
+    /** Colonne jouée, de 0 (gauche) à 6 (droite). */
+    public final int column;
 
-    /**
-     * Retourne l'indice de la colonne jouée.
-     * @return entier entre 0 et 6
-     */
-    public int getColumn() {
-        return column;
-    }
+    /** @param column indice de colonne (0..6) */
+    public Connect4Move(int column) { this.column = column; }
 
+    /** Accesseur pour compatibilité */
+    public int getColumn() { return column; }
+
+    /** Les colonnes sont numérotées de 1 à 7 pour le joueur. */
     @Override
-    public String toString() {
-        return "Colonne " + (column + 1); // Affichage 1-indexé pour l'utilisateur
-    }
+    public String toString() { return "Colonne " + (column + 1); }
 }

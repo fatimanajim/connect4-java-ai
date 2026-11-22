@@ -1,199 +1,176 @@
 package connect4.core;
 
-import java.io.Serializable;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Représente l'état du plateau de Puissance 4 (grille verticale de 7 colonnes et 6 lignes).
- * Hérite de la classe abstraite Position vue en cours.
+ * État complet d'une partie de Puissance 4 : grille de 6 lignes x 7 colonnes.
+ * Implémenté par le Profil 2 (Moteur Métier & Règles du jeu).
  * 
- * Valeurs des cases :
- * 0 : Case vide
- * 1 : Pion Rouge ('R' - Joueur 1 / Humain - Commence toujours la partie)
- * 2 : Pion Jaune ('J' - Joueur 2 / Machine)
+ * <p>Convention : {@code board[0]} est la ligne du HAUT, {@code board[5]} la ligne du BAS.
+ * Les rouges jouent en premier : le joueur courant se déduit de {@link #nbMoves}.</p>
  * 
- * @author Groupe Devoir 2 - IA
+ * @author Profil 2 (Moteur Métier) & Profil 1 (Intégration)
  */
-public class Connect4Position extends Position implements Serializable {
+public class Connect4Position extends Position {
     private static final long serialVersionUID = 1L;
 
-    public static final int ROWS = 6;
-    public static final int COLS = 7;
-    public static final int EMPTY = 0;
-    public static final int RED = 1;    // Joueur 1 (commence)
-    public static final int YELLOW = 2; // Joueur 2 / Machine
+    public static final int ROWS = 6, COLS = 7;
+    public static final int EMPTY = 0, RED = 1, YELLOW = 2;
 
-    private final int[][] board;
+    /** Grille du jeu (EMPTY, RED ou YELLOW dans chaque case). */
+    public final int[][] board = new int[ROWS][COLS];
 
-    /**
-     * Initialise un plateau vide de 6 lignes par 7 colonnes.
-     */
-    public Connect4Position() {
-        this.board = new int[ROWS][COLS];
-    }
+    /** Nombre de pions déjà posés (0..42). */
+    public int nbMoves = 0;
 
-    /**
-     * Constructeur par copie profonde.
-     */
-    public Connect4Position(Connect4Position other) {
-        this.board = new int[ROWS][COLS];
-        for (int r = 0; r < ROWS; r++) {
-            System.arraycopy(other.board[r], 0, this.board[r], 0, COLS);
-        }
-    }
+    /** @return le joueur qui doit jouer (RED si nbMoves est pair, sinon YELLOW) */
+    public int currentPlayer() { return (nbMoves % 2 == 0) ? RED : YELLOW; }
 
-    /**
-     * Retourne la valeur de la case aux coordonnées données.
-     */
-    public int getCell(int row, int col) {
-        return board[row][col];
-    }
+    /** @return l'adversaire de {@code player} */
+    public static int opponent(int player) { return player == RED ? YELLOW : RED; }
 
-    /**
-     * Retourne une copie de la grille de jeu.
-     */
+    /** @return contenu de la case (ligne r depuis le haut, colonne c) */
+    public int get(int r, int c) { return board[r][c]; }
+
+    /** Alias pour compatibilité */
+    public int getCell(int r, int c) { return board[r][c]; }
+
+    /** @return une copie de la grille */
     public int[][] getBoardCopy() {
         int[][] copy = new int[ROWS][COLS];
         for (int r = 0; r < ROWS; r++) {
-            System.arraycopy(this.board[r], 0, copy[r], 0, COLS);
+            System.arraycopy(board[r], 0, copy[r], 0, COLS);
         }
         return copy;
     }
 
-    /**
-     * Vérifie si un coup est autorisé dans la colonne spécifiée.
-     * @param col indice de la colonne (0 à 6)
-     * @return true si la colonne est valide et non pleine
-     */
-    public boolean isValidMove(int col) {
-        if (col < 0 || col >= COLS) {
-            return false;
-        }
-        return board[0][col] == EMPTY; // Si la case du haut est vide, la colonne a au moins une place
+    /** @return true si la colonne existe et n'est pas pleine */
+    public boolean isLegal(int col) {
+        return col >= 0 && col < COLS && board[0][col] == EMPTY;
     }
 
     /**
-     * Applique un mouvement avec respect de la gravité (le pion tombe à la position libre la plus basse).
-     * Retourne une NOUVELLE instance de Connect4Position (immutabilité pour l'arbre de recherche).
-     * 
-     * @param col Colonne choisie (0 à 6)
-     * @param player Identifiant du joueur (1 ou 2)
-     * @return Nouvelle position après le coup
-     * @throws IllegalArgumentException si le coup est illégal (colonne pleine ou invalide)
+     * Joue un pion pour le joueur courant ; il tombe jusqu'à la case libre la plus basse (gravité).
+     *
+     * @param col colonne choisie (0..6)
+     * @return la ligne où le pion est tombé
+     * @throws IllegalMoveException si la partie est finie, la colonne hors bornes ou pleine
      */
-    public Connect4Position playMove(int col, int player) {
-        if (!isValidMove(col)) {
-            throw new IllegalArgumentException("Coup illégal : La colonne " + (col + 1) + " est pleine ou invalide.");
-        }
-
-        Connect4Position nextPos = new Connect4Position(this);
-        // Descente du pion (gravité) : du bas (ROWS-1) vers le haut (0)
+    public int drop(int col) {
+        if (isGameOver())
+            throw new IllegalMoveException("La partie est terminée.");
+        if (col < 0 || col >= COLS)
+            throw new IllegalMoveException("Colonne invalide : choisissez un nombre entre 1 et 7.");
+        if (board[0][col] != EMPTY)
+            throw new IllegalMoveException("La colonne " + (col + 1) + " est pleine.");
+        int player = currentPlayer();
         for (int r = ROWS - 1; r >= 0; r--) {
-            if (nextPos.board[r][col] == EMPTY) {
-                nextPos.board[r][col] = player;
-                break;
+            if (board[r][col] == EMPTY) {
+                board[r][col] = player;
+                nbMoves++;
+                return r;
             }
         }
-        return nextPos;
+        throw new IllegalMoveException("La colonne " + (col + 1) + " est pleine.");
     }
 
     /**
-     * Vérifie si le joueur donné a aligné 4 pions consécutifs.
-     * 
-     * @param player 1 pour Rouge, 2 pour Jaune
-     * @return true si le joueur a gagné
+     * Version non destructive pour l'IA : renvoie une NOUVELLE position après le coup.
+     * @throws IllegalMoveException si le coup est interdit
      */
-    public boolean checkWin(int player) {
-        // 1. Vérification horizontale (-)
-        for (int r = 0; r < ROWS; r++) {
-            for (int c = 0; c <= COLS - 4; c++) {
-                if (board[r][c] == player &&
-                    board[r][c + 1] == player &&
-                    board[r][c + 2] == player &&
-                    board[r][c + 3] == player) {
-                    return true;
-                }
-            }
-        }
+    public Connect4Position play(int col) {
+        Connect4Position p = copy();
+        p.drop(col);
+        return p;
+    }
 
-        // 2. Vérification verticale (|)
-        for (int r = 0; r <= ROWS - 4; r++) {
-            for (int c = 0; c < COLS; c++) {
-                if (board[r][c] == player &&
-                    board[r + 1][c] == player &&
-                    board[r + 2][c] == player &&
-                    board[r + 3][c] == player) {
-                    return true;
-                }
-            }
-        }
+    /** Copie profonde (indispensable pour explorer l'arbre de recherche). */
+    public Connect4Position copy() {
+        Connect4Position p = new Connect4Position();
+        for (int r = 0; r < ROWS; r++)
+            System.arraycopy(board[r], 0, p.board[r], 0, COLS);
+        p.nbMoves = nbMoves;
+        return p;
+    }
 
-        // 3. Vérification diagonale descendante (\)
-        for (int r = 0; r <= ROWS - 4; r++) {
-            for (int c = 0; c <= COLS - 4; c++) {
-                if (board[r][c] == player &&
-                    board[r + 1][c + 1] == player &&
-                    board[r + 2][c + 2] == player &&
-                    board[r + 3][c + 3] == player) {
-                    return true;
-                }
-            }
-        }
+    /**
+     * @return les colonnes jouables, triées du centre vers les bords
+     *         (ce tri améliore l'élagage alpha-bêta).
+     */
+    public List<Integer> legalMoves() {
+        int[] order = {3, 2, 4, 1, 5, 0, 6};
+        List<Integer> moves = new ArrayList<>();
+        for (int c : order) if (isLegal(c)) moves.add(c);
+        return moves;
+    }
 
-        // 4. Vérification diagonale montante (/)
-        for (int r = 3; r < ROWS; r++) {
-            for (int c = 0; c <= COLS - 4; c++) {
-                if (board[r][c] == player &&
-                    board[r - 1][c + 1] == player &&
-                    board[r - 2][c + 2] == player &&
-                    board[r - 3][c + 3] == player) {
-                    return true;
-                }
-            }
-        }
+    /** @return true si la grille est pleine (42 pions) */
+    public boolean isFull() { return nbMoves == ROWS * COLS; }
 
+    /** @return true si {@code player} a aligné 4 pions (horizontal, vertical, 2 diagonales) */
+    public boolean hasWon(int player) {
+        int[][] dirs = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
+        for (int r = 0; r < ROWS; r++)
+            for (int c = 0; c < COLS; c++)
+                if (board[r][c] == player)
+                    for (int[] d : dirs) {
+                        int k = 1;
+                        while (k < 4) {
+                            int rr = r + d[0] * k, cc = c + d[1] * k;
+                            if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS
+                                    || board[rr][cc] != player) break;
+                            k++;
+                        }
+                        if (k == 4) return true;
+                    }
         return false;
     }
 
+    /** @return true si quelqu'un a gagné ou si la grille est pleine */
+    public boolean isGameOver() { return hasWon(RED) || hasWon(YELLOW) || isFull(); }
+
+    /** @return RED, YELLOW, ou EMPTY s'il n'y a pas (encore) de gagnant */
+    public int winner() { return hasWon(RED) ? RED : hasWon(YELLOW) ? YELLOW : EMPTY; }
+
+    // ===== Signatures demandées par le Profil 1 (IA) =====
+
     /**
-     * Vérifie si le plateau est entièrement rempli (condition de match nul).
+     * @param col colonne testée (0..6)
+     * @return true si la colonne existe et n'est pas pleine
      */
-    public boolean isFull() {
-        for (int c = 0; c < COLS; c++) {
-            if (board[0][c] == EMPTY) {
-                return false;
-            }
-        }
-        return true;
+    public boolean isValidMove(int col) { return isLegal(col); }
+
+    /**
+     * Joue un pion pour {@code player} et renvoie une NOUVELLE position.
+     * Si player est le joueur courant, on utilise play(col).
+     * 
+     * @param col    colonne choisie (0..6)
+     * @param player RED ou YELLOW
+     * @return la nouvelle position après application de la gravité
+     * @throws IllegalMoveException si le coup est interdit
+     */
+    public Connect4Position playMove(int col, int player) {
+        if (player != currentPlayer())
+            throw new IllegalMoveException("Ce n'est pas le tour du joueur " + player + ".");
+        return play(col);
     }
 
     /**
-     * Compte le nombre de coups déjà joués sur le plateau.
+     * @param player RED ou YELLOW
+     * @return true si {@code player} a aligné 4 pions
      */
-    public int getPieceCount() {
-        int count = 0;
-        for (int r = 0; r < ROWS; r++) {
-            for (int c = 0; c < COLS; c++) {
-                if (board[r][c] != EMPTY) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
+    public boolean checkWin(int player) { return hasWon(player); }
 
-    /**
-     * Affiche textuellement la grille avec indices des colonnes.
-     */
+    /** Affichage console de la grille (R = rouge, J = jaune). */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("\n  1   2   3   4   5   6   7  \n");
+        StringBuilder sb = new StringBuilder("\n  1   2   3   4   5   6   7\n");
         sb.append("+---+---+---+---+---+---+---+\n");
         for (int r = 0; r < ROWS; r++) {
             sb.append("|");
             for (int c = 0; c < COLS; c++) {
-                char symbol = '.';
+                char symbol = ' ';
                 if (board[r][c] == RED) symbol = 'R';
                 else if (board[r][c] == YELLOW) symbol = 'J';
                 sb.append(" ").append(symbol).append(" |");

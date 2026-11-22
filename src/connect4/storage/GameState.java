@@ -1,49 +1,37 @@
 package connect4.storage;
 
-import connect4.ai.AIDifficulty;
 import connect4.core.Connect4Position;
-
 import java.io.Serializable;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
-/**
- * Objet de transfert de données (DTO) encapsulant l'état complet d'une partie pour la sauvegarde.
- * Permet de restituer fidèlement la partie sans perte d'information.
- * 
- * @author Groupe Devoir 2 - IA
+/** 
+ * Objet sérialisable contenant tout ce qu'il faut pour reprendre une partie à l'identique. 
+ * Conçu par le Profil 2.
  */
 public class GameState implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    public static final int MODE_HUMAN_VS_HUMAN = 1;
-    public static final int MODE_HUMAN_VS_AI = 2;
+    /** Position de la grille (le joueur actif s'en déduit via nbMoves). */
+    public Connect4Position position;
+    /** "HUMAIN_VS_HUMAIN" ou "HUMAIN_VS_IA". */
+    public String gameMode;
+    /** "FACILE", "MOYEN" ou "DIFFICILE". */
+    public String difficulty;
+    /** "MINIMAX" ou "ALPHA_BETA" (stratégie de l'IA et de l'aide). */
+    public String strategy;
+    /** Nombre d'aides (jokers) encore disponibles. */
+    public int hintsLeft = 3;
+    /** Couleur du joueur humain en mode contre machine (RED ou YELLOW). */
+    public int humanColor = Connect4Position.RED;
+    /** Scores cumulés des deux joueurs. */
+    public int scoreRed, scoreYellow;
 
-    private final Connect4Position position;
-    private final int currentPlayer;
-    private final int gameMode;
-    private final AIDifficulty difficulty;
-    private final int hintsRemaining;
-    private final long saveTimestamp;
+    public GameState() {}
 
-    public GameState(Connect4Position position, int currentPlayer, int gameMode, AIDifficulty difficulty, int hintsRemaining) {
+    public GameState(Connect4Position position, String gameMode, String difficulty, String strategy, int hintsLeft) {
         this.position = position;
-        this.currentPlayer = currentPlayer;
         this.gameMode = gameMode;
         this.difficulty = difficulty;
-        this.hintsRemaining = hintsRemaining;
-        this.saveTimestamp = System.currentTimeMillis();
-    }
-
-    public Connect4Position getPosition() { return position; }
-    public int getCurrentPlayer() { return currentPlayer; }
-    public int getGameMode() { return gameMode; }
-    public AIDifficulty getDifficulty() { return difficulty; }
-    public int getHintsRemaining() { return hintsRemaining; }
-    public long getSaveTimestamp() { return saveTimestamp; }
-
-    public String getFormattedDate() {
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-        return sdf.format(new Date(saveTimestamp));
+        this.strategy = strategy;
+        this.hintsLeft = hintsLeft;
     }
 }
