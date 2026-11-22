@@ -4,126 +4,120 @@ import connect4.ai.AIDifficulty;
 import connect4.ai.Connect4Search;
 import connect4.core.Connect4Move;
 import connect4.core.Connect4Position;
-import connect4.core.GameSearch;
+import connect4.core.IllegalMoveException;
 import connect4.storage.GameSaveManager;
 import connect4.storage.GameState;
 
 import java.util.Scanner;
 
 /**
- * ContrÃ´leur principal de la partie de Puissance 4.
- * Orchestre les tours de jeu, la saisie utilisateur, l'appel Ã  l'IA,
- * la gestion des erreurs, la sauvegarde et l'aide au joueur.
+ * Contrôleur principal orchestrant la partie de Puissance 4.
+ * Gère la boucle de jeu, la gestion des erreurs (IllegalMoveException),
+ * les tours de jeu, l'IA, la sauvegarde et l'aide au joueur.
  * 
- * @author Groupe Devoir 2 - IA
+ * @author Profil 3 (IHM) & Profil 2 (Persistance) & Profil 1 (IA)
  */
 public class GameController {
 
     private final Scanner scanner;
     private final Connect4Search aiEngine;
-    private final GameSaveManager saveManager;
     private HintManager hintManager;
 
     private Connect4Position currentPosition;
-    private int currentPlayer; // 1 = RED (Rouge - commence), 2 = YELLOW (Jaune)
-    private int gameMode;      // 1 = 2 Joueurs, 2 = Joueur vs Machine
-    private AIDifficulty difficulty;
+    private String gameMode;     // "HUMAIN_VS_HUMAIN" ou "HUMAIN_VS_IA"
+    private String difficulty;   // "FACILE", "MOYEN", "DIFFICILE"
+    private String strategy;     // "ALPHA_BETA", "MINIMAX"
+    private int searchDepth;
 
     public GameController(Scanner scanner) {
         this.scanner = scanner;
         this.aiEngine = new Connect4Search();
-        this.saveManager = new GameSaveManager();
         this.hintManager = new HintManager();
     }
 
     /**
-     * DÃ©marre une nouvelle partie ou restitue une partie existante.
+     * Lance une partie (nouvelle ou restaurée).
      */
-    public void start(int mode, AIDifficulty difficulty, GameState restoredState) {
+    public void start(String mode, AIDifficulty diffConfig, GameState restoredState) {
         if (restoredState != null) {
-            this.currentPosition = restoredState.getPosition();
-            this.currentPlayer = restoredState.getCurrentPlayer();
-            this.gameMode = restoredState.getGameMode();
-            this.difficulty = restoredState.getDifficulty();
-            this.hintManager = new HintManager(restoredState.getHintsRemaining());
-            System.out.println("\n[OK] Partie restituee avec succes (Sauvegardee le " + restoredState.getFormattedDate() + ")");
+            this.currentPosition = restoredState.position;
+            this.gameMode = restoredState.gameMode;
+            this.difficulty = restoredState.difficulty;
+            this.strategy = restoredState.strategy;
+            this.hintManager = new HintManager(restoredState.hintsLeft);
+            this.searchDepth = resolveDepth(this.difficulty);
+            System.out.println("\n[OK] Partie restituee avec succes !");
+            System.out.println("Mode : " + gameMode + " | Coups deja joues : " + currentPosition.nbMoves);
         } else {
             this.currentPosition = new Connect4Position();
-            this.currentPlayer = Connect4Position.RED; // Les Rouges commencent toujours
             this.gameMode = mode;
-            this.difficulty = difficulty;
+            this.difficulty = diffConfig.name();
+            this.strategy = (diffConfig.getStrategy() == AIDifficulty.Strategy.ALPHABETA) ? "ALPHA_BETA" : "MINIMAX";
+            this.searchDepth = diffConfig.getDepth();
             this.hintManager = new HintManager(HintManager.DEFAULT_MAX_HINTS);
+
             System.out.println("\n--- Debut de la partie de Puissance 4 ---");
-            System.out.println("Mode : " + (mode == 1 ? "2 Joueurs Humains" : "Humain (Rouge) vs Machine (Jaune)"));
-            System.out.println("Complexite IA : " + difficulty.getLabel());
-            System.out.println("Strategie : " + difficulty.getStrategy().getLabel());
+            System.out.println("Mode : " + (mode.equals("HUMAIN_VS_HUMAIN") ? "2 Joueurs Humains" : "Humain (Rouge) vs Machine (Jaune)"));
+            System.out.println("Complexite IA : Profondeur " + searchDepth + " (" + difficulty + ")");
+            System.out.println("Strategie : " + (strategy.equals("ALPHA_BETA") ? "Elagage Alpha-Beta (Diapo 19)" : "Minimax standard"));
             System.out.println("Regle : Les ROUGES ('R') jouent en premier !");
         }
 
-        // Boucle principale de jeu
         runGameLoop();
     }
 
     private void runGameLoop() {
-        boolean running = true;
+        boolean usePruning = strategy.equals("ALPHA_BETA");
 
-        while (running) {
-            System.out.println(currentPosition.toString());
+        while (!currentPosition.isGameOver()) {
+            ConsoleView.printBoard(currentPosition);
 
-            // 1. VÃ©rification des conditions de fin
-            if (currentPosition.checkWin(Connect4Position.RED)) {
-                System.out.println("ðŸŽ‰ VICTOIRE DES ROUGES ('R') ! FÃ©licitations !");
-                break;
-            }
-            if (currentPosition.checkWin(Connect4Position.YELLOW)) {
-                if (gameMode == GameState.MODE_HUMAN_VS_AI) {
-                    System.out.println("ðŸ¤– La Machine ('J') a remportÃ© la partie !");
-                } else {
-                    System.out.println("ðŸŽ‰ VICTOIRE DES JAUNES ('J') ! FÃ©licitations !");
-                }
-                break;
-            }
-            if (currentPosition.isFull()) {
-                System.out.println("ðŸ¤ MATCH NUL ! La grille est entiÃ¨rement remplie sans vainqueur.");
-                break;
-            }
+            int currentPlayer = currentPosition.currentPlayer();
+            boolean isMachineTurn = gameMode.equals("HUMAIN_VS_IA") && (currentPlayer == Connect4Position.YELLOW);
 
-            // 2. Gestion du tour
-            if (gameMode == GameState.MODE_HUMAN_VS_AI && currentPlayer == Connect4Position.YELLOW) {
-                // Tour de l'ordinateur
-                playComputerTurn();
-                currentPlayer = Connect4Position.RED;
+            if (isMachineTurn) {
+                // Tour de la Machine
+                playComputerTurn(usePruning);
             } else {
-                // Tour du joueur humain
-                boolean turnCompleted = playHumanTurn();
-                if (!turnCompleted) {
-                    // Le joueur a quittÃ© la partie en cours
-                    return;
+                // Tour du Joueur Humain
+                boolean continueGame = playHumanTurn(usePruning);
+                if (!continueGame) {
+                    return; // Le joueur a quitté
                 }
-                currentPlayer = (currentPlayer == Connect4Position.RED) ? Connect4Position.YELLOW : Connect4Position.RED;
             }
         }
 
-        System.out.println("\nAppuyez sur EntrÃ©e pour retourner au menu principal...");
+        // Fin de la partie
+        ConsoleView.printBoard(currentPosition);
+        if (currentPosition.hasWon(Connect4Position.RED)) {
+            System.out.println("\n[VICTOIRE] Les ROUGES ('R') remportent la partie !");
+        } else if (currentPosition.hasWon(Connect4Position.YELLOW)) {
+            if (gameMode.equals("HUMAIN_VS_IA")) {
+                System.out.println("\n[IA] La Machine ('J') a gagne la partie !");
+            } else {
+                System.out.println("\n[VICTOIRE] Les JAUNES ('J') remportent la partie !");
+            }
+        } else if (currentPosition.isFull()) {
+            System.out.println("\n[EGALITE] Match nul ! La grille est pleine sans alignement de 4.");
+        }
+
+        System.out.println("\nAppuyez sur Entree pour revenir au menu principal...");
         scanner.nextLine();
     }
 
-    /**
-     * GÃ¨re la saisie d'un joueur humain avec gestion stricte des erreurs et commandes spÃ©ciales.
-     * @return true si le coup a Ã©tÃ© jouÃ©, false si retour au menu demandÃ©
-     */
-    private boolean playHumanTurn() {
-        String playerName = (currentPlayer == Connect4Position.RED) ? "Joueur 1 (ROUGE 'R')" : "Joueur 2 (JAUNE 'J')";
-        
+    private boolean playHumanTurn(boolean usePruning) {
+        int player = currentPosition.currentPlayer();
+        String playerName = (player == Connect4Position.RED) ? "Joueur 1 (ROUGE 'R')" : "Joueur 2 (JAUNE 'J')";
+
         while (true) {
-            System.out.println("\n" + playerName + " Ã  vous de jouer !");
-            System.out.println("[Options : Entrez 1-7 pour jouer | 'A' pour AIDE (" + hintManager.getRemainingHints() + " restantes) | 'S' pour SAUVEGARDER | 'Q' pour QUITTER]");
+            System.out.println("\n" + playerName + " a vous de jouer !");
+            System.out.println("[Options : Entrez 1-7 | 'A' pour AIDE (" + hintManager.getHintsRemaining() + " restantes) | 'S' pour SAUVEGARDER | 'Q' pour QUITTER]");
             System.out.print("Votre choix > ");
-            
+
             String input = scanner.nextLine().trim();
 
             if (input.equalsIgnoreCase("Q")) {
-                System.out.print("Voulez-vous quitter vers le menu ? (O/N) > ");
+                System.out.print("Voulez-vous vraiment quitter vers le menu ? (O/N) > ");
                 if (scanner.nextLine().trim().equalsIgnoreCase("O")) {
                     return false;
                 }
@@ -136,86 +130,63 @@ public class GameController {
             }
 
             if (input.equalsIgnoreCase("A")) {
-                handleHint();
+                handleHint(usePruning);
                 continue;
             }
 
-            // Traitement du numÃ©ro de colonne
+            // Tentative de jouer un coup avec gestion des erreurs
             try {
                 int colChoice = Integer.parseInt(input);
-                int colIndex = colChoice - 1; // Conversion 1-based vers 0-based
+                int colIndex = colChoice - 1; // 1-indexed to 0-indexed
 
-                if (colIndex < 0 || colIndex >= Connect4Position.COLS) {
-                    System.out.println("âš ï¸ ERREUR : La colonne doit Ãªtre comprise entre 1 et 7.");
-                    continue;
-                }
-
-                if (!currentPosition.isValidMove(colIndex)) {
-                    System.out.println("âš ï¸ ERREUR : La colonne " + colChoice + " est dÃ©jÃ  COMPLÃˆTE ! Choisissez une autre colonne libre.");
-                    continue;
-                }
-
-                // Coup valide : application de la gravitÃ©
-                currentPosition = currentPosition.playMove(colIndex, currentPlayer);
+                // drop() vérifie et applique la gravité, ou lève IllegalMoveException
+                currentPosition.drop(colIndex);
                 return true;
 
             } catch (NumberFormatException e) {
-                System.out.println("âš ï¸ ERREUR : Commande non reconnue. Entrez un numÃ©ro de colonne (1 Ã  7) ou 'A', 'S', 'Q'.");
-            } catch (IllegalArgumentException e) {
-                System.out.println("âš ï¸ ERREUR : " + e.getMessage());
+                System.out.println("[!] ERREUR : Saisie non reconnue. Entrez un numero de colonne (1 a 7) ou 'A', 'S', 'Q'.");
+            } catch (IllegalMoveException e) {
+                System.out.println("[!] ERREUR : " + e.getMessage());
             }
         }
     }
 
-    /**
-     * GÃ¨re le tour de l'intelligence artificielle.
-     */
-    private void playComputerTurn() {
-        System.out.println("\nðŸ¤– Tour de la Machine (Jaune 'J')...");
-        System.out.println("Calcul en cours avec l'algorithme : " + difficulty.getStrategy().getLabel() + " (Profondeur " + difficulty.getDepth() + ")...");
-
+    private void playComputerTurn(boolean usePruning) {
+        System.out.println("\n[IA] Reflexion de la Machine en cours (Profondeur " + searchDepth + ")...");
         long start = System.currentTimeMillis();
-        boolean useAlphaBeta = (difficulty.getStrategy() == AIDifficulty.Strategy.ALPHABETA);
-        Connect4Move bestMove = aiEngine.computeBestMove(currentPosition, GameSearch.PROGRAM, difficulty.getDepth(), useAlphaBeta);
-        long duration = System.currentTimeMillis() - start;
 
-        if (bestMove != null) {
-            System.out.println("ðŸ¤– La Machine joue dans la " + bestMove + " (CalculÃ© en " + duration + " ms).");
-            currentPosition = currentPosition.playMove(bestMove.getColumn(), Connect4Position.YELLOW);
+        Connect4Move best = aiEngine.computeBestMove(currentPosition, searchDepth, usePruning);
+        long elapsed = System.currentTimeMillis() - start;
+
+        if (best != null) {
+            System.out.println("[IA] La Machine joue dans la " + best + " (Calcule en " + elapsed + " ms).");
+            currentPosition.drop(best.column);
         } else {
-            // Repli de secours : premiÃ¨re colonne valide
-            for (int c = 0; c < Connect4Position.COLS; c++) {
-                if (currentPosition.isValidMove(c)) {
-                    currentPosition = currentPosition.playMove(c, Connect4Position.YELLOW);
-                    break;
-                }
+            // Repli
+            for (int c : currentPosition.legalMoves()) {
+                currentPosition.drop(c);
+                break;
             }
         }
     }
 
-    /**
-     * GÃ¨re la demande d'aide avec dÃ©crÃ©mentation des jokers.
-     */
-    private void handleHint() {
+    private void handleHint(boolean usePruning) {
         if (!hintManager.hasHints()) {
-            System.out.println("âŒ Vous avez Ã©puisÃ© toutes vos aides disponibles pour cette partie (0 restante) !");
+            System.out.println("[X] Vous avez epuise vos 3 aides pour cette partie (0 restante) !");
             return;
         }
 
-        System.out.println("ðŸ’¡ Analyse tactique en cours pour vous conseiller...");
-        Connect4Move hint = hintManager.requestHint(currentPosition, difficulty);
+        System.out.println("[CONSEIL] Analyse de la position par l'IA...");
+        Connect4Move hint = hintManager.requestHint(currentPosition, searchDepth, usePruning);
 
         if (hint != null) {
-            System.out.println("ðŸ’¡ [CONSEIL IA] : Il est recommandÃ© de jouer dans la " + hint + " !");
-            System.out.println("Il vous reste dÃ©sormais " + hintManager.getRemainingHints() + " aide(s) disponible(s).");
+            System.out.println("[CONSEIL] L'IA vous recommande de jouer dans la " + hint + " !");
+            System.out.println("Il vous reste desormais " + hintManager.getHintsRemaining() + " joker(s) d'aide.");
         } else {
-            System.out.println("âŒ Impossible de trouver une recommandation valide.");
+            System.out.println("[X] Aucune recommandation disponible.");
         }
     }
 
-    /**
-     * GÃ¨re la sauvegarde interactive de la partie en cours.
-     */
     private void handleSave() {
         System.out.print("Entrez un nom pour votre sauvegarde (ex: partie1) > ");
         String name = scanner.nextLine().trim();
@@ -223,13 +194,25 @@ public class GameController {
             name = "partie_" + System.currentTimeMillis();
         }
 
-        GameState state = new GameState(currentPosition, currentPlayer, gameMode, difficulty, hintManager.getRemainingHints());
-        boolean success = saveManager.save(state, name);
+        GameState state = new GameState();
+        state.position = currentPosition.copy();
+        state.gameMode = gameMode;
+        state.difficulty = difficulty;
+        state.strategy = strategy;
+        state.hintsLeft = hintManager.getHintsRemaining();
+        state.humanColor = Connect4Position.RED;
 
-        if (success) {
-            System.out.println("âœ“ Sauvegarde rÃ©ussie sous le nom : " + name + ".dat dans le dossier 'saves/'.");
-        } else {
-            System.out.println("âŒ Ã‰chec de la sauvegarde.");
+        try {
+            GameSaveManager.save(state, name);
+            System.out.println("[OK] Partie sauvegardee avec succes sous le nom : '" + name + "' dans 'saves/'.");
+        } catch (Exception e) {
+            System.out.println("[X] Echec de la sauvegarde : " + e.getMessage());
         }
+    }
+
+    private int resolveDepth(String diff) {
+        if ("FACILE".equalsIgnoreCase(diff)) return 2;
+        if ("DIFFICILE".equalsIgnoreCase(diff)) return 6;
+        return 4; // MOYEN
     }
 }

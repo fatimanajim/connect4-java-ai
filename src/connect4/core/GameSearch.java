@@ -1,199 +1,143 @@
 package connect4.core;
 
+import java.util.List;
+
 /**
- * Classe abstraite GameSearch : Cadre algorithmique pour les jeux a deux joueurs a somme nulle.
- * Conforme a la structure donnee en cours d'Intelligence Artificielle.
+ * Recherche adversiale à deux joueurs (Minimax / Alpha-Bêta), d'après les diapositives du cours.
+ * <p>PROGRAM = joueur MAX (celui pour qui on cherche le meilleur coup), HUMAN = joueur MIN.
+ * La méthode {@code alphaBetaHelper} est remplacée par {@link #max_Value} et {@link #min_Value} (Diapo 19).</p>
  * 
- * ==============================================================================================
- * MODIFICATION EXPLICITE DEVOIR 2 (Enseignant : M'hamed AIT KBIR - Diapositive 19) :
- * Remplacement de l'ancienne methode 'alphaBetaHelper' par les deux methodes mutuellement 
- * recursives standard de l'algorithme d'elagage Alpha-Beta :
- *   1. max_Value(Position p, float alpha, float beta, int depth)
- *   2. min_Value(Position p, float alpha, float beta, int depth)
- * ==============================================================================================
- * 
- * @author Profil 1 - Lead IA & Algorithmes de Recherche
+ * @author Profil 1 & Profil 2
  */
 public abstract class GameSearch {
+    /** Joueur MAX (la machine, ou le joueur qui demande de l'aide). */
+    public static final boolean PROGRAM = true;
+    /** Joueur MIN (l'adversaire). */
+    public static final boolean HUMAN = false;
+    /** Valeur d'une victoire (on retranche la profondeur pour préférer les victoires rapides). */
+    public static final float WIN = 100000f;
 
-    /** Constante representant la Machine (Maximiseur) */
-    public static final boolean PROGRAM = false;
+    /** true = élagage alpha-bêta ; false = Minimax pur. */
+    protected boolean pruning = true;
+    /** Profondeur maximale de recherche (complexité du jeu). */
+    protected int maxDepth = 4;
+    private int nodesVisited;
+    private float lastValue;
 
-    /** Constante representant le Joueur Humain (Minimiseur) */
-    public static final boolean HUMAN = true;
+    // ---- À implémenter par le jeu concret (Connect4Search) ----
 
-    // =========================================================================
-    // METHODES ABSTRAITES DU CONTRAT METIER
-    // =========================================================================
-
-    /**
-     * Verifie si la position actuelle est un match nul (grille pleine sans vainqueur).
-     * @param p Position courante
-     * @return true si match nul
-     */
+    /** @return true si la position est un match nul */
     public abstract boolean drawnPosition(Position p);
 
-    /**
-     * Verifie si le joueur specifie a remporte la victoire dans la position donnee.
-     * @param p Position courante
-     * @param player PROGRAM (false) ou HUMAN (true)
-     * @return true si le joueur a gagne
-     */
+    /** @return true si {@code player} (PROGRAM ou HUMAN) a gagné */
     public abstract boolean wonPosition(Position p, boolean player);
 
-    /**
-     * Calcule l'estimation heuristique de la position pour le joueur donne.
-     * @param p Position courante
-     * @param player Joueur a evaluer
-     * @return Score numerique (positif = avantage, negatif = desavantage)
-     */
+    /** Fonction d'évaluation heuristique, du point de vue de MAX (grande valeur = bon pour MAX). */
     public abstract float positionEvaluation(Position p, boolean player);
 
-    /**
-     * Affiche textuellement la position.
-     * @param p Position a afficher
-     */
-    public abstract void printPosition(Position p);
+    /** @return la liste des coups que {@code player} peut jouer depuis p */
+    public abstract List<Move> possibleMoves(Position p, boolean player);
 
-    /**
-     * Genere tous les etats successeurs valides a partir de la position courante.
-     * @param p Position courante
-     * @param player Joueur actif pour ce coup
-     * @return Tableau des positions atteignables
-     */
-    public abstract Position[] possibleMoves(Position p, boolean player);
-
-    /**
-     * Applique un coup et retourne la nouvelle position resultante.
-     * @param p Position courante
-     * @param player Joueur effectuant le coup
-     * @param move Coup a appliquer
-     * @return Nouvelle position
-     */
+    /** @return la NOUVELLE position obtenue en jouant {@code move} (p n'est pas modifiée) */
     public abstract Position makeMove(Position p, boolean player, Move move);
 
+    // ---- Paramétrage ----
+
+    /** @param pruning true = alpha-bêta, false = Minimax pur */
+    public void setPruning(boolean pruning) { this.pruning = pruning; }
+
+    public boolean isPruning() { return pruning; }
+
+    /** @param maxDepth profondeur maximale de recherche */
+    public void setMaxDepth(int maxDepth) { this.maxDepth = maxDepth; }
+
+    public int getMaxDepth() { return maxDepth; }
+
+    /** @return nombre de nœuds visités lors de la dernière recherche */
+    public int getNodesVisited() { return nodesVisited; }
+
+    /** @return valeur du meilleur coup trouvé lors de la dernière recherche */
+    public float getLastValue() { return lastValue; }
+
+    /** Test de profondeur limite (recherche à profondeur fixe, cf. diapo "Minimax : amélioration"). */
+    public boolean reachedMaxDepth(Position p, int depth) { return depth >= maxDepth; }
+
+    // ---- Algorithme (Slide 19) ----
+
     /**
-     * Test d'arret en profondeur : verifie si la profondeur maximale de recherche est atteinte.
-     * @param p Position courante
-     * @param depth Profondeur actuelle dans l'arbre
-     * @return true si depth >= maxDepth
+     * Racine de la recherche : choisit, pour MAX, le coup menant à l'enfant de plus haute valeur.
+     *
+     * @param p     position de départ (MAX doit jouer)
+     * @param depth profondeur maximale de la recherche
+     * @return le meilleur coup, ou null s'il n'y a aucun coup
      */
-    public abstract boolean reachedMaxDepth(Position p, int depth);
-
-
-    // =========================================================================
-    // IMPLEMENTATION DE L'ELAGAGE ALPHA-BETA (DIAPOSITIVE 19)
-    // =========================================================================
-
-    /**
-     * Fonction max_Value (Diapositive 19 du cours) :
-     * Maximise l'utilite pour le joueur PROGRAM en appliquant les coupures Beta.
-     * 
-     * Principe :
-     * A chaque etage MAX, on cherche la plus grande valeur 'v' parmi tous les fils.
-     * Si cette valeur depasse ou egale 'beta' (le pire score que MIN au-dessus est pret a accepter),
-     * MIN ne choisira jamais cette branche : on effectue un elagage Beta (coupure immediate).
-     * 
-     * @param p Position courante
-     * @param alpha Meilleur choix trouve jusqu'ici sur le chemin pour MAX (borne inferieure)
-     * @param beta Meilleur choix trouve jusqu'ici sur le chemin pour MIN (borne superieure)
-     * @param depth Profondeur courante dans l'arbre
-     * @return Valeur maximale estimee
-     */
-    public float max_Value(Position p, float alpha, float beta, int depth) {
-        // 1. Test d'arret : feuille terminale (victoire/nul) ou limite de profondeur
-        if (reachedMaxDepth(p, depth) || wonPosition(p, PROGRAM) || wonPosition(p, HUMAN) || drawnPosition(p)) {
-            return positionEvaluation(p, PROGRAM);
-        }
-
+    public Move bestMove(Position p, int depth) {
+        this.maxDepth = depth;
+        nodesVisited = 0;
+        Move best = null;
         float v = Float.NEGATIVE_INFINITY;
-        Position[] successors = possibleMoves(p, PROGRAM);
+        float alpha = Float.NEGATIVE_INFINITY, beta = Float.POSITIVE_INFINITY;
+        for (Move m : possibleMoves(p, PROGRAM)) {
+            float s = min_Value(makeMove(p, PROGRAM, m), 1, alpha, beta);
+            if (best == null || s > v) { v = s; best = m; }
+            if (pruning) alpha = Math.max(alpha, v);
+        }
+        lastValue = v;
+        return best;
+    }
 
-        // 2. Exploration des etats successeurs
-        for (Position succ : successors) {
-            // Appel mutuellement recursif a min_Value pour simuler la reponse optimale adverse
-            v = Math.max(v, min_Value(succ, alpha, beta, depth + 1));
-
-            // 3. Coupure Beta : inutile d'explorer les autres freres
-            if (v >= beta) {
-                return v;
+    /**
+     * Valeur d'un nœud MAX (diapo 19 : MAX-VALUE avec α, β).
+     *
+     * @param p     position du nœud
+     * @param depth profondeur courante
+     * @param alpha meilleure valeur déjà garantie à MAX sur le chemin
+     * @param beta  meilleure valeur déjà garantie à MIN sur le chemin
+     * @return la valeur utilité du nœud
+     */
+    public float max_Value(Position p, int depth, float alpha, float beta) {
+        nodesVisited++;
+        if (isTerminal(p, depth)) return utility(p, depth);
+        float v = Float.NEGATIVE_INFINITY;
+        for (Move m : possibleMoves(p, PROGRAM)) {
+            v = Math.max(v, min_Value(makeMove(p, PROGRAM, m), depth + 1, alpha, beta));
+            if (pruning) {
+                if (v >= beta) return v;      // coupe β
+                alpha = Math.max(alpha, v);
             }
-
-            // Mise a jour de la borne alpha
-            alpha = Math.max(alpha, v);
         }
         return v;
     }
 
     /**
-     * Fonction min_Value (Diapositive 19 du cours) :
-     * Minimise l'utilite pour contrer le joueur HUMAN en appliquant les coupures Alpha.
-     * 
-     * Principe :
-     * A chaque etage MIN, l'adversaire cherche a minimiser notre score.
-     * Si la valeur 'v' devient inferieure ou egale a 'alpha' (le score garanti pour MAX au-dessus),
-     * MAX ne permettra jamais d'atteindre ce noeud : on effectue un elagage Alpha (coupure immediate).
-     * 
-     * @param p Position courante
-     * @param alpha Borne inferieure actuelle
-     * @param beta Borne superieure actuelle
-     * @param depth Profondeur courante dans l'arbre
-     * @return Valeur minimale estimee
+     * Valeur d'un nœud MIN (diapo 19 : MIN-VALUE avec α, β).
+     * Mêmes paramètres que {@link #max_Value}.
      */
-    public float min_Value(Position p, float alpha, float beta, int depth) {
-        // 1. Test d'arret : feuille terminale ou limite de profondeur
-        if (reachedMaxDepth(p, depth) || wonPosition(p, PROGRAM) || wonPosition(p, HUMAN) || drawnPosition(p)) {
-            return positionEvaluation(p, PROGRAM);
-        }
-
+    public float min_Value(Position p, int depth, float alpha, float beta) {
+        nodesVisited++;
+        if (isTerminal(p, depth)) return utility(p, depth);
         float v = Float.POSITIVE_INFINITY;
-        Position[] successors = possibleMoves(p, HUMAN);
-
-        // 2. Exploration des etats successeurs
-        for (Position succ : successors) {
-            // Appel mutuellement recursif a max_Value
-            v = Math.min(v, max_Value(succ, alpha, beta, depth + 1));
-
-            // 3. Coupure Alpha : inutile d'explorer les autres freres
-            if (v <= alpha) {
-                return v;
+        for (Move m : possibleMoves(p, HUMAN)) {
+            v = Math.min(v, max_Value(makeMove(p, HUMAN, m), depth + 1, alpha, beta));
+            if (pruning) {
+                if (v <= alpha) return v;     // coupe α
+                beta = Math.min(beta, v);
             }
-
-            // Mise a jour de la borne beta
-            beta = Math.min(beta, v);
         }
         return v;
     }
 
-    /**
-     * Algorithme Minimax naif (sans coupures alpha-beta).
-     * Permet de comparer experimentalement les performances et le nombre de noeuds visites.
-     * 
-     * @param p Position a evaluer
-     * @param player Joueur courant
-     * @param depth Profondeur actuelle
-     * @param isMax true si etage MAX, false si etage MIN
-     * @return Score evalue
-     */
-    public float minimax(Position p, boolean player, int depth, boolean isMax) {
-        if (reachedMaxDepth(p, depth) || wonPosition(p, PROGRAM) || wonPosition(p, HUMAN) || drawnPosition(p)) {
-            return positionEvaluation(p, PROGRAM);
-        }
+    /** TERMINAL-TEST : victoire, nul ou profondeur limite atteinte. */
+    protected boolean isTerminal(Position p, int depth) {
+        return wonPosition(p, PROGRAM) || wonPosition(p, HUMAN)
+                || drawnPosition(p) || reachedMaxDepth(p, depth);
+    }
 
-        if (isMax) {
-            float maxEval = Float.NEGATIVE_INFINITY;
-            for (Position succ : possibleMoves(p, PROGRAM)) {
-                float eval = minimax(succ, player, depth + 1, false);
-                maxEval = Math.max(maxEval, eval);
-            }
-            return maxEval;
-        } else {
-            float minEval = Float.POSITIVE_INFINITY;
-            for (Position succ : possibleMoves(p, HUMAN)) {
-                float eval = minimax(succ, player, depth + 1, true);
-                minEval = Math.min(minEval, eval);
-            }
-            return minEval;
-        }
+    /** UTILITY : valeur exacte si la partie est finie, sinon heuristique. */
+    protected float utility(Position p, int depth) {
+        if (wonPosition(p, PROGRAM)) return WIN - depth;
+        if (wonPosition(p, HUMAN)) return -WIN + depth;
+        if (drawnPosition(p)) return 0;
+        return positionEvaluation(p, PROGRAM);
     }
 }

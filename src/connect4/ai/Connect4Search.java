@@ -10,177 +10,112 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Classe concrete Connect4Search : fait le pont entre le framework abstrait GameSearch 
- * et la logique specifique du Puissance 4.
+ * Spécialisation de GameSearch pour le jeu du Puissance 4.
+ * Fait le lien entre le cadre de recherche abstrait et les règles concrètes du jeu.
+ * Implémenté par le Profil 1 (Lead IA).
  * 
- * Responsabilites du Profil 1 :
- * 1. Implementer les methodes abstraites heritees de GameSearch.
- * 2. Ordonnancer l'exploration des colonnes (centre d'abord : 3, 2, 4, 1, 5, 0, 6) 
- *    pour maximiser l'efficacite des coupures Alpha et Beta.
- * 3. Fournir la methode de calcul du meilleur coup tant pour la Machine que pour l'Aide au joueur.
- * 
- * @author Profil 1 - Lead IA & Algorithmes de Recherche
+ * @author Profil 1 - Lead IA & Algorithmes
  */
 public class Connect4Search extends GameSearch {
 
-    /** Profondeur maximale de recherche dynamique */
-    private int searchMaxDepth = 4;
+    /** Couleur du joueur pour qui on maximise l'utilité (PROGRAM) */
+    private int maxPlayerColor = Connect4Position.YELLOW;
 
-    /** Ordre d'exploration optimise : du centre vers les extremites */
-    private static final int[] OPTIMAL_COLUMN_ORDER = {3, 2, 4, 1, 5, 0, 6};
-
-    public void setSearchMaxDepth(int depth) {
-        this.searchMaxDepth = depth;
+    public void setMaxPlayerColor(int color) {
+        this.maxPlayerColor = color;
     }
 
-    public int getSearchMaxDepth() {
-        return searchMaxDepth;
+    public int getMaxPlayerColor() {
+        return maxPlayerColor;
     }
 
     @Override
     public boolean drawnPosition(Position p) {
         if (!(p instanceof Connect4Position)) return false;
-        Connect4Position pos = (Connect4Position) p;
-        return pos.isFull() && !pos.checkWin(Connect4Position.RED) && !pos.checkWin(Connect4Position.YELLOW);
+        Connect4Position cp = (Connect4Position) p;
+        return cp.isFull() && !cp.hasWon(Connect4Position.RED) && !cp.hasWon(Connect4Position.YELLOW);
     }
 
     @Override
     public boolean wonPosition(Position p, boolean player) {
         if (!(p instanceof Connect4Position)) return false;
-        Connect4Position pos = (Connect4Position) p;
-        int piece = (player == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
-        return pos.checkWin(piece);
+        Connect4Position cp = (Connect4Position) p;
+        int color = (player == PROGRAM) ? maxPlayerColor : Connect4Position.opponent(maxPlayerColor);
+        return cp.hasWon(color);
     }
 
     @Override
     public float positionEvaluation(Position p, boolean player) {
         if (!(p instanceof Connect4Position)) return 0;
-        Connect4Position pos = (Connect4Position) p;
-        int piece = (player == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
-        return EvaluationFunction.evaluate(pos, piece);
+        Connect4Position cp = (Connect4Position) p;
+        return EvaluationFunction.evaluate(cp, maxPlayerColor);
     }
 
     @Override
-    public void printPosition(Position p) {
-        if (p instanceof Connect4Position) {
-            System.out.println(p.toString());
+    public List<Move> possibleMoves(Position p, boolean player) {
+        if (!(p instanceof Connect4Position)) return new ArrayList<>();
+        Connect4Position cp = (Connect4Position) p;
+        List<Move> moves = new ArrayList<>();
+        // legalMoves() renvoie déjà les colonnes triées {3, 2, 4, 1, 5, 0, 6} pour optimiser l'élagage
+        for (int col : cp.legalMoves()) {
+            moves.add(new Connect4Move(col));
         }
-    }
-
-    @Override
-    public Position[] possibleMoves(Position p, boolean player) {
-        if (!(p instanceof Connect4Position)) return new Position[0];
-        Connect4Position pos = (Connect4Position) p;
-        int piece = (player == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
-
-        List<Position> successors = new ArrayList<>();
-        // Exploration par ordre de colonnes optimise (favorise le centre pour les coupures alpha-beta)
-        for (int col : OPTIMAL_COLUMN_ORDER) {
-            if (pos.isValidMove(col)) {
-                successors.add(pos.playMove(col, piece));
-            }
-        }
-        return successors.toArray(new Position[0]);
+        return moves;
     }
 
     @Override
     public Position makeMove(Position p, boolean player, Move move) {
         if (!(p instanceof Connect4Position) || !(move instanceof Connect4Move)) return p;
-        Connect4Position pos = (Connect4Position) p;
-        Connect4Move c4Move = (Connect4Move) move;
-        int piece = (player == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
-        return pos.playMove(c4Move.getColumn(), piece);
-    }
-
-    @Override
-    public boolean reachedMaxDepth(Position p, int depth) {
-        return depth >= searchMaxDepth;
+        Connect4Position cp = (Connect4Position) p;
+        Connect4Move cm = (Connect4Move) move;
+        return cp.play(cm.column);
     }
 
     /**
-     * Calcule le meilleur coup a la racine de l'arbre de recherche.
+     * Recherche le meilleur coup à la racine de l'arbre.
+     * Utilisé pour la Machine (tour IA) et pour le système d'Aide (Joker).
      * 
-     * Cette methode sert a la fois pour :
-     * 1. Le tour de la MACHINE (forPlayer == PROGRAM, false) : recherche du coup maximisant l'utilite IA.
-     * 2. La demande d'AIDE AU JOUEUR (forPlayer == HUMAN, true) : recherche du coup optimal pour le joueur humain.
-     * 
-     * @param pos Position courante de la grille
-     * @param forPlayer PROGRAM (false) pour la machine, HUMAN (true) pour le joueur
-     * @param depth Profondeur maximale d'anticipation
-     * @param useAlphaBeta true pour activer l'elagage Alpha-Beta (Slide 19), false pour Minimax classique
-     * @return Le Connect4Move le plus pertinent calcule
+     * @param p Position courante
+     * @param depth Profondeur de recherche
+     * @param useAlphaBeta true pour Alpha-Bêta, false pour Minimax
+     * @return Le meilleur Connect4Move
      */
-    public Connect4Move computeBestMove(Connect4Position pos, boolean forPlayer, int depth, boolean useAlphaBeta) {
-        this.searchMaxDepth = depth;
-        int playerPiece = (forPlayer == HUMAN) ? Connect4Position.RED : Connect4Position.YELLOW;
-        int opponentPiece = (playerPiece == Connect4Position.RED) ? Connect4Position.YELLOW : Connect4Position.RED;
+    public Connect4Move computeBestMove(Connect4Position p, int depth, boolean useAlphaBeta) {
+        this.maxPlayerColor = p.currentPlayer();
+        this.setPruning(useAlphaBeta);
+        this.setMaxDepth(depth);
 
-        Connect4Move bestMove = null;
-        float bestVal = (forPlayer == PROGRAM) ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
-
-        // Etape 1 : Verification prioritaire d'un coup gagnant immediat en 1 coup
-        for (int col : OPTIMAL_COLUMN_ORDER) {
-            if (pos.isValidMove(col)) {
-                Connect4Position simulated = pos.playMove(col, playerPiece);
-                if (simulated.checkWin(playerPiece)) {
-                    return new Connect4Move(col); // Coup gagnant direct trouve
-                }
+        // 1. Coup gagnant immédiat en 1 coup
+        for (int col : p.legalMoves()) {
+            Connect4Position sim = p.play(col);
+            if (sim.hasWon(maxPlayerColor)) {
+                return new Connect4Move(col);
             }
         }
 
-        // Etape 2 : Verification prioritaire de blocage d'une victoire immediate adverse en 1 coup
-        for (int col : OPTIMAL_COLUMN_ORDER) {
-            if (pos.isValidMove(col)) {
-                Connect4Position opponentWinning = pos.playMove(col, opponentPiece);
-                if (opponentWinning.checkWin(opponentPiece)) {
-                    return new Connect4Move(col); // Blocage vital immediat
+        // 2. Blocage immédiat d'une menace de victoire adverse au prochain coup
+        int oppColor = Connect4Position.opponent(maxPlayerColor);
+        for (int col : p.legalMoves()) {
+            Connect4Position simOpp = p.copy();
+            for (int r = Connect4Position.ROWS - 1; r >= 0; r--) {
+                if (simOpp.board[r][col] == Connect4Position.EMPTY) {
+                    simOpp.board[r][col] = oppColor;
+                    break;
                 }
+            }
+            if (simOpp.hasWon(oppColor)) {
+                return new Connect4Move(col); // Blocage vital
             }
         }
 
-        // Etape 3 : Exploration arborescente (Alpha-Beta Slide 19 ou Minimax)
-        for (int col : OPTIMAL_COLUMN_ORDER) {
-            if (pos.isValidMove(col)) {
-                Connect4Position succ = pos.playMove(col, playerPiece);
-                float val;
-
-                if (forPlayer == PROGRAM) {
-                    // La machine cherche a maximiser ; on appelle min_Value au niveau suivant
-                    if (useAlphaBeta) {
-                        val = min_Value(succ, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, 1);
-                    } else {
-                        val = minimax(succ, HUMAN, 1, false);
-                    }
-
-                    if (val > bestVal || bestMove == null) {
-                        bestVal = val;
-                        bestMove = new Connect4Move(col);
-                    }
-                } else {
-                    // L'humain (demande d'aide) cherche a maximiser ses chances
-                    if (useAlphaBeta) {
-                        val = max_Value(succ, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY, 1);
-                    } else {
-                        val = minimax(succ, PROGRAM, 1, true);
-                    }
-
-                    if (val < bestVal || bestMove == null) {
-                        bestVal = val;
-                        bestMove = new Connect4Move(col);
-                    }
-                }
-            }
+        // 3. Recherche arborescente (Alpha-Bêta Slide 19 ou Minimax)
+        Move m = bestMove(p, depth);
+        if (m instanceof Connect4Move) {
+            return (Connect4Move) m;
         }
 
-        // Repli de secours : retourner la premiere colonne valide disponible
-        if (bestMove == null) {
-            for (int col = 0; col < Connect4Position.COLS; col++) {
-                if (pos.isValidMove(col)) {
-                    return new Connect4Move(col);
-                }
-            }
-        }
-
-        return bestMove;
+        // Repli sur le premier coup légal
+        List<Integer> legal = p.legalMoves();
+        return legal.isEmpty() ? null : new Connect4Move(legal.get(0));
     }
 }
