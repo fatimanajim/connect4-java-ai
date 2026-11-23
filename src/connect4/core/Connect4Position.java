@@ -6,17 +6,26 @@ import java.util.List;
 /**
  * État complet d'une partie de Puissance 4 : grille de 6 lignes x 7 colonnes.
  * Implémenté par le Profil 2 (Moteur Métier & Règles du jeu).
- * 
+ *
  * <p>Convention : {@code board[0]} est la ligne du HAUT, {@code board[5]} la ligne du BAS.
  * Les rouges jouent en premier : le joueur courant se déduit de {@link #nbMoves}.</p>
- * 
+ *
  * @author Profil 2 (Moteur Métier) & Profil 1 (Intégration)
  */
 public class Connect4Position extends Position {
+    /** Identifiant de version pour la sérialisation (sauvegarde des parties). */
     private static final long serialVersionUID = 1L;
 
-    public static final int ROWS = 6, COLS = 7;
-    public static final int EMPTY = 0, RED = 1, YELLOW = 2;
+    /** Nombre de lignes de la grille. */
+    public static final int ROWS = 6;
+    /** Nombre de colonnes de la grille. */
+    public static final int COLS = 7;
+    /** Case vide. */
+    public static final int EMPTY = 0;
+    /** Pion rouge (le joueur rouge commence la partie). */
+    public static final int RED = 1;
+    /** Pion jaune. */
+    public static final int YELLOW = 2;
 
     /** Grille du jeu (EMPTY, RED ou YELLOW dans chaque case). */
     public final int[][] board = new int[ROWS][COLS];
@@ -27,16 +36,29 @@ public class Connect4Position extends Position {
     /** @return le joueur qui doit jouer (RED si nbMoves est pair, sinon YELLOW) */
     public int currentPlayer() { return (nbMoves % 2 == 0) ? RED : YELLOW; }
 
-    /** @return l'adversaire de {@code player} */
+    /**
+     * @param player RED ou YELLOW
+     * @return l'adversaire de {@code player}
+     */
     public static int opponent(int player) { return player == RED ? YELLOW : RED; }
 
-    /** @return contenu de la case (ligne r depuis le haut, colonne c) */
+    /**
+     * @param r ligne (0 = haut)
+     * @param c colonne (0..6)
+     * @return contenu de la case (EMPTY, RED ou YELLOW)
+     */
     public int get(int r, int c) { return board[r][c]; }
 
-    /** Alias pour compatibilité */
+    /**
+     * Alias de {@link #get(int, int)}, conservé pour compatibilité avec l'interface.
+     *
+     * @param r ligne (0 = haut)
+     * @param c colonne (0..6)
+     * @return contenu de la case (EMPTY, RED ou YELLOW)
+     */
     public int getCell(int r, int c) { return board[r][c]; }
 
-    /** @return une copie de la grille */
+    /** @return une copie de la grille (modifier la copie ne change pas la position) */
     public int[][] getBoardCopy() {
         int[][] copy = new int[ROWS][COLS];
         for (int r = 0; r < ROWS; r++) {
@@ -45,7 +67,10 @@ public class Connect4Position extends Position {
         return copy;
     }
 
-    /** @return true si la colonne existe et n'est pas pleine */
+    /**
+     * @param col colonne testée
+     * @return true si la colonne existe (0..6) et n'est pas pleine
+     */
     public boolean isLegal(int col) {
         return col >= 0 && col < COLS && board[0][col] == EMPTY;
     }
@@ -77,6 +102,9 @@ public class Connect4Position extends Position {
 
     /**
      * Version non destructive pour l'IA : renvoie une NOUVELLE position après le coup.
+     *
+     * @param col colonne choisie (0..6)
+     * @return la nouvelle position (la position courante n'est pas modifiée)
      * @throws IllegalMoveException si le coup est interdit
      */
     public Connect4Position play(int col) {
@@ -85,7 +113,11 @@ public class Connect4Position extends Position {
         return p;
     }
 
-    /** Copie profonde (indispensable pour explorer l'arbre de recherche). */
+    /**
+     * Copie profonde (indispensable pour explorer l'arbre de recherche).
+     *
+     * @return une nouvelle position identique à celle-ci
+     */
     public Connect4Position copy() {
         Connect4Position p = new Connect4Position();
         for (int r = 0; r < ROWS; r++)
@@ -108,7 +140,10 @@ public class Connect4Position extends Position {
     /** @return true si la grille est pleine (42 pions) */
     public boolean isFull() { return nbMoves == ROWS * COLS; }
 
-    /** @return true si {@code player} a aligné 4 pions (horizontal, vertical, 2 diagonales) */
+    /**
+     * @param player RED ou YELLOW
+     * @return true si {@code player} a aligné 4 pions (horizontal, vertical, 2 diagonales)
+     */
     public boolean hasWon(int player) {
         int[][] dirs = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
         for (int r = 0; r < ROWS; r++)
@@ -142,13 +177,14 @@ public class Connect4Position extends Position {
     public boolean isValidMove(int col) { return isLegal(col); }
 
     /**
-     * Joue un pion pour {@code player} et renvoie une NOUVELLE position.
-     * Si player est le joueur courant, on utilise play(col).
-     * 
+     * Joue un pion pour {@code player} et renvoie une NOUVELLE position
+     * (la position courante n'est pas modifiée).
+     *
      * @param col    colonne choisie (0..6)
-     * @param player RED ou YELLOW
+     * @param player RED ou YELLOW ; doit être le joueur dont c'est le tour
      * @return la nouvelle position après application de la gravité
-     * @throws IllegalMoveException si le coup est interdit
+     * @throws IllegalMoveException si le coup est interdit (colonne pleine ou hors bornes,
+     *                              partie terminée) ou si ce n'est pas le tour de {@code player}
      */
     public Connect4Position playMove(int col, int player) {
         if (player != currentPlayer())
@@ -162,7 +198,11 @@ public class Connect4Position extends Position {
      */
     public boolean checkWin(int player) { return hasWon(player); }
 
-    /** Affichage console de la grille (R = rouge, J = jaune). */
+    /**
+     * Affichage console de la grille encadrée (R = rouge, J = jaune).
+     *
+     * @return la grille sous forme de texte, avec la numérotation des colonnes de 1 à 7
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("\n  1   2   3   4   5   6   7\n");
