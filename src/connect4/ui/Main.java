@@ -1,219 +1,242 @@
 package connect4.ui;
 
-import connect4.ai.AIDifficulty;
-import connect4.storage.GameSaveManager;
-import connect4.storage.GameState;
+import javax.swing.*;
+import javax.swing.border.Border;
+import java.awt.*;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.Scanner;
-
-/**
- * Point d'entrée principal de l'application Puissance 4 (Connect 4).
- * <p>
- * Présente le menu, la sélection des modes de jeu, la configuration
- * (complexité, stratégie de la machine et de l'aide, couleurs) et le chargement
- * d'une partie sauvegardée.
- * </p>
- * <p>Option de lancement : {@code --no-color} désactive les couleurs ANSI.</p>
- *
- * @author Groupe Devoir 2 - IA (Enseignant : M'hamed AIT KBIR)
- */
 public class Main {
 
-    private static AIDifficulty currentDifficulty = AIDifficulty.MOYEN;
-    private static String currentStrategy = defaultStrategyOf(AIDifficulty.MOYEN);
-    private static final Scanner scanner = new Scanner(System.in);
+    // ==========================================
+    // PALETTE GAMING PREMIUM
+    // ==========================================
 
-    /** Contrôleur unique : il conserve les scores de la session entre les parties. */
-    private static GameController controller;
+    public static final Color BACKGROUND =
+            new Color(12, 16, 32);
 
-    /**
-     * Lance l'application.
-     *
-     * @param args {@code --no-color} pour désactiver les couleurs
-     */
+    public static final Color PANEL =
+            new Color(23, 31, 55);
+
+    public static final Color BLUE =
+            new Color(35, 145, 255);
+
+    public static final Color PURPLE =
+            new Color(130, 75, 245);
+
+    public static final Color RED =
+            new Color(255, 65, 90);
+
+    public static final Color YELLOW =
+            new Color(255, 205, 55);
+
+    public static final Color WHITE =
+            new Color(245, 248, 255);
+
+    public static final Color TEXT_SECONDARY =
+            new Color(165, 180, 210);
+
+    public static final Font TITLE_FONT =
+            new Font("Segoe UI", Font.BOLD, 28);
+
+    public static final Font TEXT_FONT =
+            new Font("Segoe UI", Font.PLAIN, 15);
+
     public static void main(String[] args) {
-        if (Arrays.asList(args).contains("--no-color") || System.getenv("NO_COLOR") != null) {
-            ConsoleView.setColorEnabled(false);
-        }
-        controller = new GameController(scanner);
 
-        ConsoleView.printBanner();
+        SwingUtilities.invokeLater(() -> {
 
-        try {
-            boolean running = true;
-            while (running) {
-                ConsoleView.printMainMenu(currentDifficulty.name(), currentStrategy,
-                        controller.getScoreRed(), controller.getScoreYellow());
-                System.out.print("Entrez votre choix (1-6) > ");
-                String choice = scanner.nextLine().trim();
+            try {
+                UIManager.setLookAndFeel(
+                    UIManager.getSystemLookAndFeelClassName()
+                );
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
-                switch (choice) {
-                    case "1":
-                        startNewGame(GameController.MODE_HUMAN_VS_HUMAN);
-                        break;
-                    case "2":
-                        startNewGame(GameController.MODE_HUMAN_VS_AI);
-                        break;
-                    case "3":
-                        loadSavedGame();
-                        break;
-                    case "4":
-                        configureSettings();
-                        break;
-                    case "5":
-                        ConsoleView.printRules();
-                        break;
-                    case "6":
-                        System.out.println("\nMerci d'avoir joue au Puissance 4 ! A bientot.");
-                        running = false;
-                        break;
-                    default:
-                        ConsoleView.printError("Choix invalide. Veuillez entrer un chiffre entre 1 et 6.\n");
+            configurePremiumStyle();
+
+            Connect4GUI gui = new Connect4GUI();
+
+            gui.setVisible(true);
+        });
+    }
+
+    // ==========================================
+    // STYLE GLOBAL DES FENÊTRES
+    // ==========================================
+
+    private static void configurePremiumStyle() {
+
+        // Fenêtres de dialogue
+        UIManager.put("OptionPane.background", BACKGROUND);
+        UIManager.put("Panel.background", BACKGROUND);
+        UIManager.put("OptionPane.messageForeground", WHITE);
+        UIManager.put("OptionPane.messageFont",
+                new Font("Segoe UI", Font.BOLD, 16));
+
+        UIManager.put("OptionPane.border",
+                BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(
+                        new Color(70, 95, 155), 1
+                    ),
+                    BorderFactory.createEmptyBorder(
+                        18, 20, 18, 20
+                    )
+                )
+        );
+
+        // Boutons des fenêtres
+        
+// ==========================================
+// BOUTONS DES FENÊTRES DE DIALOGUE
+// ==========================================
+
+UIManager.put("Button.background", new Color(35, 145, 255));
+
+// IMPORTANT : texte sombre pour rester lisible
+// même si Windows impose un fond blanc.
+UIManager.put("Button.foreground", new Color(15, 25, 50));
+
+UIManager.put("Button.font",
+        new Font("Segoe UI", Font.BOLD, 14));
+
+UIManager.put("Button.opaque", true);
+UIManager.put("Button.contentAreaFilled", true);
+UIManager.put("Button.focusPainted", false);
+UIManager.put("Button.borderPainted", true);
+
+UIManager.put("Button.border",
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(
+                new Color(35, 145, 255), 1
+            ),
+            BorderFactory.createEmptyBorder(
+                10, 22, 10, 22
+            )
+        )
+);
+
+
+        // Champs de saisie
+        UIManager.put("TextField.background", PANEL);
+        UIManager.put("TextField.foreground", WHITE);
+        UIManager.put("TextField.caretForeground", BLUE);
+        UIManager.put("TextField.selectionBackground", BLUE);
+        UIManager.put("TextField.selectionForeground", WHITE);
+
+        UIManager.put("TextField.font", TEXT_FONT);
+
+        UIManager.put("TextField.border",
+                BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(
+                        new Color(65, 95, 155), 1
+                    ),
+                    BorderFactory.createEmptyBorder(
+                        8, 10, 8, 10
+                    )
+                )
+        );
+
+        // Listes déroulantes
+        
+// ==========================================
+// LISTES DÉROULANTES
+// ==========================================
+
+UIManager.put("ComboBox.background", Color.WHITE);
+
+UIManager.put("ComboBox.foreground",
+        new Color(15, 25, 50));
+
+UIManager.put("ComboBox.font",
+        new Font("Segoe UI", Font.BOLD, 14));
+
+UIManager.put("ComboBox.selectionBackground",
+        new Color(35, 145, 255));
+
+UIManager.put("ComboBox.selectionForeground",
+        Color.WHITE);
+
+
+        // Listes
+        UIManager.put("List.background", PANEL);
+        UIManager.put("List.foreground", WHITE);
+        UIManager.put("List.selectionBackground", BLUE);
+        UIManager.put("List.selectionForeground", WHITE);
+        UIManager.put("List.font", TEXT_FONT);
+
+        // Tooltips
+        UIManager.put("ToolTip.background",
+                new Color(35, 45, 75));
+
+        UIManager.put("ToolTip.foreground", WHITE);
+        UIManager.put("ToolTip.font",
+                new Font("Segoe UI", Font.PLAIN, 13));
+
+        // Couleurs des menus
+        UIManager.put("Menu.background", PANEL);
+        UIManager.put("Menu.foreground", WHITE);
+
+        UIManager.put("MenuItem.background", PANEL);
+        UIManager.put("MenuItem.foreground", WHITE);
+        UIManager.put("MenuItem.selectionBackground", BLUE);
+        UIManager.put("MenuItem.selectionForeground", WHITE);
+    }
+
+    // ==========================================
+    // OUTIL DE STYLISATION DES BOUTONS
+    // ==========================================
+
+    public static void styleButton(
+            JButton button,
+            Color baseColor
+    ) {
+
+        button.setFont(
+                new Font("Segoe UI", Font.BOLD, 14)
+        );
+
+        button.setForeground(WHITE);
+        button.setBackground(baseColor);
+
+        button.setOpaque(true);
+        button.setContentAreaFilled(true);
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+
+        button.setCursor(
+                new Cursor(Cursor.HAND_CURSOR)
+        );
+
+        button.setBorder(
+                BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(
+                        baseColor.brighter(), 1
+                    ),
+                    BorderFactory.createEmptyBorder(
+                        10, 20, 10, 20
+                    )
+                )
+        );
+
+        Color original = baseColor;
+
+        button.addMouseListener(
+            new java.awt.event.MouseAdapter() {
+
+                @Override
+                public void mouseEntered(
+                        java.awt.event.MouseEvent e
+                ) {
+                    button.setBackground(original.brighter());
+                }
+
+                @Override
+                public void mouseExited(
+                        java.awt.event.MouseEvent e
+                ) {
+                    button.setBackground(original);
                 }
             }
-        } catch (NoSuchElementException e) {
-            // Flux d'entrée fermé (Ctrl+D / Ctrl+Z) : sortie propre au lieu d'un plantage.
-            System.out.println("\n[i] Entree fermee. Fin de l'application.");
-        }
-        scanner.close();
-    }
-
-    /**
-     * Stratégie par défaut associée à un niveau (celle définie dans {@link AIDifficulty}).
-     *
-     * @param level niveau de complexité
-     * @return "ALPHA_BETA" ou "MINIMAX"
-     */
-    private static String defaultStrategyOf(AIDifficulty level) {
-        return (level.getStrategy() == AIDifficulty.Strategy.ALPHABETA)
-                ? GameController.STRATEGY_ALPHA_BETA : GameController.STRATEGY_MINIMAX;
-    }
-
-    /**
-     * Démarre une nouvelle partie avec les réglages courants.
-     *
-     * @param mode mode de jeu (2 joueurs ou contre la machine)
-     */
-    private static void startNewGame(String mode) {
-        controller.start(mode, currentDifficulty, currentStrategy, null);
-    }
-
-    /** Liste les sauvegardes disponibles, laisse choisir, puis restitue la partie. */
-    private static void loadSavedGame() {
-        List<String> saves = GameSaveManager.listSaves();
-        if (saves.isEmpty()) {
-            ConsoleView.printInfo("Aucune partie sauvegardee trouvee dans le dossier 'saves/'.");
-            return;
-        }
-
-        System.out.println("\n--- PARTIES SAUVEGARDEES DISPONIBLES ---");
-        for (int i = 0; i < saves.size(); i++) {
-            System.out.println((i + 1) + ". " + saves.get(i));
-        }
-        System.out.print("Entrez le numero de la partie a charger (0 pour annuler) > ");
-        String input = scanner.nextLine().trim();
-
-        try {
-            int index = Integer.parseInt(input) - 1;
-            if (index == -1) {
-                return;
-            }
-
-            if (index >= 0 && index < saves.size()) {
-                GameState state = GameSaveManager.load(saves.get(index));
-                if (state != null) {
-                    controller.start(state.gameMode, currentDifficulty, state);
-                }
-            } else {
-                ConsoleView.printError("Numero invalide.");
-            }
-        } catch (NumberFormatException e) {
-            ConsoleView.printError("Entrez un numero de la liste (ou 0 pour annuler).");
-        } catch (Exception e) {
-            ConsoleView.printError("Impossible de charger la sauvegarde : " + e.getMessage());
-        }
-    }
-
-    /**
-     * Menu de configuration : niveau de complexité, stratégie (machine et aide)
-     * et affichage en couleurs. Une saisie invalide laisse le réglage inchangé.
-     */
-    private static void configureSettings() {
-        boolean inMenu = true;
-        while (inMenu) {
-            System.out.println("\n--- CONFIGURATION ---");
-            System.out.println("1. Niveau de complexite   (actuel : " + currentDifficulty.getLabel() + ")");
-            System.out.println("2. Strategie de recherche (actuelle : " + currentStrategy + ") - machine et aide");
-            System.out.println("3. Affichage en couleurs  (actuel : " + (ConsoleView.isColorEnabled() ? "OUI" : "NON") + ")");
-            System.out.println("0. Retour au menu principal");
-            System.out.print("Votre choix > ");
-            String input = scanner.nextLine().trim();
-
-            switch (input) {
-                case "1":
-                    chooseLevel();
-                    break;
-                case "2":
-                    chooseStrategy();
-                    break;
-                case "3":
-                    ConsoleView.setColorEnabled(!ConsoleView.isColorEnabled());
-                    ConsoleView.printSuccess("Couleurs : " + (ConsoleView.isColorEnabled() ? "activees" : "desactivees"));
-                    break;
-                case "0":
-                    inMenu = false;
-                    break;
-                default:
-                    ConsoleView.printInfo("Choix inchange.");
-            }
-        }
-    }
-
-    /** Choix du niveau (profondeur 2, 4 ou 6). La stratégie par défaut du niveau est appliquée. */
-    private static void chooseLevel() {
-        System.out.println("\n1. Facile      (Profondeur 2)");
-        System.out.println("2. Moyen       (Profondeur 4) [Recommande]");
-        System.out.println("3. Difficile   (Profondeur 6)");
-        System.out.print("Selectionnez le niveau (1-3) > ");
-        String input = scanner.nextLine().trim();
-
-        AIDifficulty chosen = null;
-        switch (input) {
-            case "1": chosen = AIDifficulty.FACILE; break;
-            case "2": chosen = AIDifficulty.MOYEN; break;
-            case "3": chosen = AIDifficulty.DIFFICILE; break;
-            default:
-                ConsoleView.printInfo("Choix inchange.");
-        }
-        if (chosen != null) {
-            currentDifficulty = chosen;
-            currentStrategy = defaultStrategyOf(chosen);
-            ConsoleView.printSuccess("Niveau regle sur : " + chosen.getLabel()
-                    + " (strategie par defaut : " + currentStrategy + ", modifiable via l'option 2)");
-        }
-    }
-
-    /** Choix de la stratégie de recherche, appliquée à la machine et à l'aide au joueur. */
-    private static void chooseStrategy() {
-        System.out.println("\n1. Elagage Alpha-Beta (Diapo 19) - rapide");
-        System.out.println("2. Minimax standard              - sans elagage");
-        System.out.print("Selectionnez la strategie (1-2) > ");
-        String input = scanner.nextLine().trim();
-
-        switch (input) {
-            case "1":
-                currentStrategy = GameController.STRATEGY_ALPHA_BETA;
-                ConsoleView.printSuccess("Strategie reglee sur : " + currentStrategy);
-                break;
-            case "2":
-                currentStrategy = GameController.STRATEGY_MINIMAX;
-                ConsoleView.printSuccess("Strategie reglee sur : " + currentStrategy);
-                break;
-            default:
-                ConsoleView.printInfo("Choix inchange.");
-        }
+        );
     }
 }

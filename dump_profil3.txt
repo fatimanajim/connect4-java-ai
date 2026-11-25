@@ -1,0 +1,711 @@
+﻿package connect4.ui;
+
+import connect4.core.Connect4Position;
+
+/**
+ * Vue console du jeu du Puissance 4.
+ * Gère l'affichage stylisé de la grille, des bannières, menus et messages.
+ * 
+ * @author Profil 3 & Intégration
+ */
+public class ConsoleView {
+
+    public static void printBanner() {
+        System.out.println("===============================================================");
+        System.out.println("        PUISSANCE 4 (CONNECT 4) - INTELLIGENCE ARTIFICIELLE    ");
+        System.out.println("           Devoir 2 - Enseignant : M'hamed AIT KBIR           ");
+        System.out.println("           Algorithmes : Minimax & Alpha-Bêta (Diapo 19)       ");
+        System.out.println("===============================================================");
+    }
+
+    public static void printMainMenu(String currentDifficulty, String currentStrategy) {
+        System.out.println("\n--- MENU PRINCIPAL ---");
+        System.out.println("1. Nouvelle partie : 2 Joueurs (Humain vs Humain)");
+        System.out.println("2. Nouvelle partie : Solo (Humain vs Machine)");
+        System.out.println("3. Reprendre une partie sauvegardée");
+        System.out.println("4. Configuration [Complexité: " + currentDifficulty + " | Stratégie: " + currentStrategy + "]");
+        System.out.println("5. Consulter les Règles du Jeu");
+        System.out.println("6. Quitter l'application");
+    }
+
+    public static void printBoard(Connect4Position position) {
+        System.out.println(position.toString());
+    }
+
+    public static void printRules() {
+        System.out.println("\n====================== RÈGLES DU PUISSANCE 4 ======================");
+        System.out.println("1. Grille verticale de 7 colonnes et 6 lignes.");
+        System.out.println("2. Deux joueurs s'affrontent :");
+        System.out.println("   - Les ROUGES ('R') jouent TOUJOURS en premier.");
+        System.out.println("   - Les JAUNES ('J') jouent en second.");
+        System.out.println("3. Gravité : Le pion descend jusqu'à la position libre la plus basse.");
+        System.out.println("4. Victoire : 4 pions consécutifs (horizontal, vertical, diagonal).");
+        System.out.println("5. Match nul : Grille pleine (42 pions) sans alignement de 4.");
+        System.out.println("6. Aide : Vous disposez d'un nombre limité de jokers pour demander");
+        System.out.println("   le meilleur coup à l'IA.");
+        System.out.println("===================================================================\n");
+    }
+}
+package connect4.ui;
+
+import connect4.ai.AIDifficulty;
+import connect4.ai.Connect4Search;
+import connect4.core.Connect4Move;
+import connect4.core.Connect4Position;
+import connect4.core.IllegalMoveException;
+import connect4.storage.GameSaveManager;
+import connect4.storage.GameState;
+
+import java.util.Scanner;
+
+/**
+ * Contrôleur principal orchestrant la partie de Puissance 4.
+ * Gère la boucle de jeu, la gestion des erreurs (IllegalMoveException),
+ * les tours de jeu, l'IA, la sauvegarde et l'aide au joueur.
+ * 
+ * @author Profil 3 (IHM) & Profil 2 (Persistance) & Profil 1 (IA)
+ */
+public class GameController {
+
+    private final Scanner scanner;
+    private final Connect4Search aiEngine;
+    private HintManager hintManager;
+
+    private Connect4Position currentPosition;
+    private String gameMode;     // "HUMAIN_VS_HUMAIN" ou "HUMAIN_VS_IA"
+    private String difficulty;   // "FACILE", "MOYEN", "DIFFICILE"
+    private String strategy;     // "ALPHA_BETA", "MINIMAX"
+    private int searchDepth;
+
+    public GameController(Scanner scanner) {
+        this.scanner = scanner;
+        this.aiEngine = new Connect4Search();
+        this.hintManager = new HintManager();
+    }
+
+    /**
+     * Lance une partie (nouvelle ou restaurée).
+     */
+    public void start(String mode, AIDifficulty diffConfig, GameState restoredState) {
+        if (restoredState != null) {
+            this.currentPosition = restoredState.position;
+            this.gameMode = restoredState.gameMode;
+            this.difficulty = restoredState.difficulty;
+            this.strategy = restoredState.strategy;
+            this.hintManager = new HintManager(restoredState.hintsLeft);
+            this.searchDepth = resolveDepth(this.difficulty);
+            System.out.println("\n[OK] Partie restituee avec succes !");
+            System.out.println("Mode : " + gameMode + " | Coups deja joues : " + currentPosition.nbMoves);
+        } else {
+            this.currentPosition = new Connect4Position();
+            this.gameMode = mode;
+            this.difficulty = diffConfig.name();
+            this.strategy = (diffConfig.getStrategy() == AIDifficulty.Strategy.ALPHABETA) ? "ALPHA_BETA" : "MINIMAX";
+            this.searchDepth = diffConfig.getDepth();
+            this.hintManager = new HintManager(HintManager.DEFAULT_MAX_HINTS);
+
+            System.out.println("\n--- Debut de la partie de Puissance 4 ---");
+            System.out.println("Mode : " + (mode.equals("HUMAIN_VS_HUMAIN") ? "2 Joueurs Humains" : "Humain (Rouge) vs Machine (Jaune)"));
+            System.out.println("Complexite IA : Profondeur " + searchDepth + " (" + difficulty + ")");
+            System.out.println("Strategie : " + (strategy.equals("ALPHA_BETA") ? "Elagage Alpha-Beta (Diapo 19)" : "Minimax standard"));
+            System.out.println("Regle : Les ROUGES ('R') jouent en premier !");
+        }
+
+        runGameLoop();
+    }
+
+    private void runGameLoop() {
+        boolean usePruning = strategy.equals("ALPHA_BETA");
+
+        while (!currentPosition.isGameOver()) {
+            ConsoleView.printBoard(currentPosition);
+
+            int currentPlayer = currentPosition.currentPlayer();
+            boolean isMachineTurn = gameMode.equals("HUMAIN_VS_IA") && (currentPlayer == Connect4Position.YELLOW);
+
+            if (isMachineTurn) {
+                // Tour de la Machine
+                playComputerTurn(usePruning);
+            } else {
+                // Tour du Joueur Humain
+                boolean continueGame = playHumanTurn(usePruning);
+                if (!continueGame) {
+                    return; // Le joueur a quitté
+                }
+            }
+        }
+
+        // Fin de la partie
+        ConsoleView.printBoard(currentPosition);
+        if (currentPosition.hasWon(Connect4Position.RED)) {
+            System.out.println("\n[VICTOIRE] Les ROUGES ('R') remportent la partie !");
+        } else if (currentPosition.hasWon(Connect4Position.YELLOW)) {
+            if (gameMode.equals("HUMAIN_VS_IA")) {
+                System.out.println("\n[IA] La Machine ('J') a gagne la partie !");
+            } else {
+                System.out.println("\n[VICTOIRE] Les JAUNES ('J') remportent la partie !");
+            }
+        } else if (currentPosition.isFull()) {
+            System.out.println("\n[EGALITE] Match nul ! La grille est pleine sans alignement de 4.");
+        }
+
+        System.out.println("\nAppuyez sur Entree pour revenir au menu principal...");
+        scanner.nextLine();
+    }
+
+    private boolean playHumanTurn(boolean usePruning) {
+        int player = currentPosition.currentPlayer();
+        String playerName = (player == Connect4Position.RED) ? "Joueur 1 (ROUGE 'R')" : "Joueur 2 (JAUNE 'J')";
+
+        while (true) {
+            System.out.println("\n" + playerName + " a vous de jouer !");
+            System.out.println("[Options : Entrez 1-7 | 'A' pour AIDE (" + hintManager.getHintsRemaining() + " restantes) | 'S' pour SAUVEGARDER | 'Q' pour QUITTER]");
+            System.out.print("Votre choix > ");
+
+            String input = scanner.nextLine().trim();
+
+            if (input.equalsIgnoreCase("Q")) {
+                System.out.print("Voulez-vous vraiment quitter vers le menu ? (O/N) > ");
+                if (scanner.nextLine().trim().equalsIgnoreCase("O")) {
+                    return false;
+                }
+                continue;
+            }
+
+            if (input.equalsIgnoreCase("S")) {
+                handleSave();
+                continue;
+            }
+
+            if (input.equalsIgnoreCase("A")) {
+                handleHint(usePruning);
+                continue;
+            }
+
+            // Tentative de jouer un coup avec gestion des erreurs
+            try {
+                int colChoice = Integer.parseInt(input);
+                int colIndex = colChoice - 1; // 1-indexed to 0-indexed
+
+                // drop() vérifie et applique la gravité, ou lève IllegalMoveException
+                currentPosition.drop(colIndex);
+                return true;
+
+            } catch (NumberFormatException e) {
+                System.out.println("[!] ERREUR : Saisie non reconnue. Entrez un numero de colonne (1 a 7) ou 'A', 'S', 'Q'.");
+            } catch (IllegalMoveException e) {
+                System.out.println("[!] ERREUR : " + e.getMessage());
+            }
+        }
+    }
+
+    private void playComputerTurn(boolean usePruning) {
+        System.out.println("\n[IA] Reflexion de la Machine en cours (Profondeur " + searchDepth + ")...");
+        long start = System.currentTimeMillis();
+
+        Connect4Move best = aiEngine.computeBestMove(currentPosition, searchDepth, usePruning);
+        long elapsed = System.currentTimeMillis() - start;
+
+        if (best != null) {
+            System.out.println("[IA] La Machine joue dans la " + best + " (Calcule en " + elapsed + " ms).");
+            currentPosition.drop(best.column);
+        } else {
+            // Repli
+            for (int c : currentPosition.legalMoves()) {
+                currentPosition.drop(c);
+                break;
+            }
+        }
+    }
+
+    private void handleHint(boolean usePruning) {
+        if (!hintManager.hasHints()) {
+            System.out.println("[X] Vous avez epuise vos 3 aides pour cette partie (0 restante) !");
+            return;
+        }
+
+        System.out.println("[CONSEIL] Analyse de la position par l'IA...");
+        Connect4Move hint = hintManager.requestHint(currentPosition, searchDepth, usePruning);
+
+        if (hint != null) {
+            System.out.println("[CONSEIL] L'IA vous recommande de jouer dans la " + hint + " !");
+            System.out.println("Il vous reste desormais " + hintManager.getHintsRemaining() + " joker(s) d'aide.");
+        } else {
+            System.out.println("[X] Aucune recommandation disponible.");
+        }
+    }
+
+    private void handleSave() {
+        System.out.print("Entrez un nom pour votre sauvegarde (ex: partie1) > ");
+        String name = scanner.nextLine().trim();
+        if (name.isEmpty()) {
+            name = "partie_" + System.currentTimeMillis();
+        }
+
+        GameState state = new GameState();
+        state.position = currentPosition.copy();
+        state.gameMode = gameMode;
+        state.difficulty = difficulty;
+        state.strategy = strategy;
+        state.hintsLeft = hintManager.getHintsRemaining();
+        state.humanColor = Connect4Position.RED;
+
+        try {
+            GameSaveManager.save(state, name);
+            System.out.println("[OK] Partie sauvegardee avec succes sous le nom : '" + name + "' dans 'saves/'.");
+        } catch (Exception e) {
+            System.out.println("[X] Echec de la sauvegarde : " + e.getMessage());
+        }
+    }
+
+    private int resolveDepth(String diff) {
+        if ("FACILE".equalsIgnoreCase(diff)) return 2;
+        if ("DIFFICILE".equalsIgnoreCase(diff)) return 6;
+        return 4; // MOYEN
+    }
+}
+package connect4.ui;
+
+import connect4.ai.Connect4Search;
+import connect4.core.Connect4Move;
+import connect4.core.Connect4Position;
+
+/**
+ * Gère le système d'aide au joueur avec limitation du nombre de jokers.
+ * Répond à l'exigence : "Permettre au joueur de demander de l'aide un certain nombre de fois".
+ * 
+ * @author Profil 3 & Profil 1
+ */
+public class HintManager {
+
+    public static final int DEFAULT_MAX_HINTS = 3;
+    private int hintsRemaining;
+    private final Connect4Search searchEngine;
+
+    public HintManager() {
+        this(DEFAULT_MAX_HINTS);
+    }
+
+    public HintManager(int maxHints) {
+        this.hintsRemaining = maxHints;
+        this.searchEngine = new Connect4Search();
+    }
+
+    public int getHintsRemaining() {
+        return hintsRemaining;
+    }
+
+    public void setHintsRemaining(int hints) {
+        this.hintsRemaining = hints;
+    }
+
+    public boolean hasHints() {
+        return hintsRemaining > 0;
+    }
+
+    /**
+     * Sollicite l'IA pour calculer le meilleur coup à conseiller au joueur humain.
+     */
+    public Connect4Move requestHint(Connect4Position position, int depth, boolean useAlphaBeta) {
+        if (!hasHints()) {
+            return null;
+        }
+
+        Connect4Move best = searchEngine.computeBestMove(position, depth, useAlphaBeta);
+        if (best != null) {
+            hintsRemaining--;
+        }
+        return best;
+    }
+}
+package connect4.ui;
+
+import connect4.ai.AIDifficulty;
+import connect4.storage.GameSaveManager;
+import connect4.storage.GameState;
+
+import java.util.List;
+import java.util.Scanner;
+
+/**
+ * Point d'entrée principal de l'application Puissance 4 (Connect 4).
+ * Présente le menu, la sélection des modes, la configuration et le chargement.
+ * 
+ * @author Groupe Devoir 2 - IA (Enseignant : M'hamed AIT KBIR)
+ */
+public class Main {
+
+    private static AIDifficulty currentDifficulty = AIDifficulty.MOYEN;
+    private static final Scanner scanner = new Scanner(System.in);
+
+    public static void main(String[] args) {
+        ConsoleView.printBanner();
+
+        boolean running = true;
+        while (running) {
+            ConsoleView.printMainMenu(currentDifficulty.name(), currentDifficulty.getStrategy().name());
+            System.out.print("Entrez votre choix (1-6) > ");
+            String choice = scanner.nextLine().trim();
+
+            switch (choice) {
+                case "1":
+                    startNewGame("HUMAIN_VS_HUMAIN");
+                    break;
+                case "2":
+                    startNewGame("HUMAIN_VS_IA");
+                    break;
+                case "3":
+                    loadSavedGame();
+                    break;
+                case "4":
+                    configureSettings();
+                    break;
+                case "5":
+                    ConsoleView.printRules();
+                    break;
+                case "6":
+                    System.out.println("\nMerci d'avoir joue au Puissance 4 ! A bientot.");
+                    running = false;
+                    break;
+                default:
+                    System.out.println("[!] Choix invalide. Veuillez entrer un chiffre entre 1 et 6.\n");
+            }
+        }
+        scanner.close();
+    }
+
+    private static void startNewGame(String mode) {
+        GameController controller = new GameController(scanner);
+        controller.start(mode, currentDifficulty, null);
+    }
+
+    private static void loadSavedGame() {
+        List<String> saves = GameSaveManager.listSaves();
+        if (saves.isEmpty()) {
+            System.out.println("\n[i] Aucune partie sauvegardee trouvee dans le dossier 'saves/'.");
+            return;
+        }
+
+        System.out.println("\n--- PARTIES SAUVEGARDEES DISPONIBLES ---");
+        for (int i = 0; i < saves.size(); i++) {
+            System.out.println((i + 1) + ". " + saves.get(i));
+        }
+        System.out.print("Entrez le numero de la partie a charger (0 pour annuler) > ");
+        String input = scanner.nextLine().trim();
+
+        try {
+            int index = Integer.parseInt(input) - 1;
+            if (index == -1) return;
+
+            if (index >= 0 && index < saves.size()) {
+                GameState state = GameSaveManager.load(saves.get(index));
+                if (state != null) {
+                    GameController controller = new GameController(scanner);
+                    controller.start(state.gameMode, currentDifficulty, state);
+                }
+            } else {
+                System.out.println("[!] Numero invalide.");
+            }
+        } catch (Exception e) {
+            System.out.println("[!] Erreur lors du chargement : " + e.getMessage());
+        }
+    }
+
+    private static void configureSettings() {
+        System.out.println("\n--- CONFIGURATION DE LA COMPLEXITE ET STRATEGIE ---");
+        System.out.println("1. Facile      (Profondeur 2 - Minimax)");
+        System.out.println("2. Moyen       (Profondeur 4 - Alpha-Beta) [Recommande]");
+        System.out.println("3. Difficile   (Profondeur 6 - Alpha-Beta)");
+        System.out.print("Selectionnez le niveau (1-3) > ");
+        String input = scanner.nextLine().trim();
+
+        switch (input) {
+            case "1":
+                currentDifficulty = AIDifficulty.FACILE;
+                System.out.println("[OK] Niveau regle sur : " + currentDifficulty.getLabel());
+                break;
+            case "2":
+                currentDifficulty = AIDifficulty.MOYEN;
+                System.out.println("[OK] Niveau regle sur : " + currentDifficulty.getLabel());
+                break;
+            case "3":
+                currentDifficulty = AIDifficulty.DIFFICILE;
+                System.out.println("[OK] Niveau regle sur : " + currentDifficulty.getLabel());
+                break;
+            default:
+                System.out.println("[!] Choix inchange.");
+        }
+    }
+}
+package connect4.ai;
+
+import java.io.Serializable;
+
+/**
+ * Niveaux de complexité et stratégies de recherche.
+ * 
+ * @author Profil 1 - Lead IA & Algorithmes
+ */
+public enum AIDifficulty implements Serializable {
+
+    FACILE("Facile (Profondeur 2)", 2, Strategy.MINIMAX),
+    MOYEN("Moyen (Profondeur 4)", 4, Strategy.ALPHABETA),
+    DIFFICILE("Difficile (Profondeur 6)", 6, Strategy.ALPHABETA);
+
+    public enum Strategy {
+        ALPHABETA("Élagage Alpha-Bêta (Diapo 19)"),
+        MINIMAX("Minimax standard");
+
+        private final String label;
+        Strategy(String label) { this.label = label; }
+        public String getLabel() { return label; }
+    }
+
+    private final String label;
+    private final int depth;
+    private final Strategy strategy;
+
+    AIDifficulty(String label, int depth, Strategy strategy) {
+        this.label = label;
+        this.depth = depth;
+        this.strategy = strategy;
+    }
+
+    public String getLabel() { return label; }
+    public int getDepth() { return depth; }
+    public Strategy getStrategy() { return strategy; }
+
+    @Override
+    public String toString() {
+        return label;
+    }
+}
+package connect4.ai;
+
+import connect4.core.Connect4Move;
+import connect4.core.Connect4Position;
+import connect4.core.GameSearch;
+import connect4.core.Move;
+import connect4.core.Position;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Spécialisation de GameSearch pour le jeu du Puissance 4.
+ * Fait le lien entre le cadre de recherche abstrait et les règles concrètes du jeu.
+ * Implémenté par le Profil 1 (Lead IA).
+ * 
+ * @author Profil 1 - Lead IA & Algorithmes
+ */
+public class Connect4Search extends GameSearch {
+
+    /** Couleur du joueur pour qui on maximise l'utilité (PROGRAM) */
+    private int maxPlayerColor = Connect4Position.YELLOW;
+
+    public void setMaxPlayerColor(int color) {
+        this.maxPlayerColor = color;
+    }
+
+    public int getMaxPlayerColor() {
+        return maxPlayerColor;
+    }
+
+    @Override
+    public boolean drawnPosition(Position p) {
+        if (!(p instanceof Connect4Position)) return false;
+        Connect4Position cp = (Connect4Position) p;
+        return cp.isFull() && !cp.hasWon(Connect4Position.RED) && !cp.hasWon(Connect4Position.YELLOW);
+    }
+
+    @Override
+    public boolean wonPosition(Position p, boolean player) {
+        if (!(p instanceof Connect4Position)) return false;
+        Connect4Position cp = (Connect4Position) p;
+        int color = (player == PROGRAM) ? maxPlayerColor : Connect4Position.opponent(maxPlayerColor);
+        return cp.hasWon(color);
+    }
+
+    @Override
+    public float positionEvaluation(Position p, boolean player) {
+        if (!(p instanceof Connect4Position)) return 0;
+        Connect4Position cp = (Connect4Position) p;
+        return EvaluationFunction.evaluate(cp, maxPlayerColor);
+    }
+
+    @Override
+    public List<Move> possibleMoves(Position p, boolean player) {
+        if (!(p instanceof Connect4Position)) return new ArrayList<>();
+        Connect4Position cp = (Connect4Position) p;
+        List<Move> moves = new ArrayList<>();
+        // legalMoves() renvoie déjà les colonnes triées {3, 2, 4, 1, 5, 0, 6} pour optimiser l'élagage
+        for (int col : cp.legalMoves()) {
+            moves.add(new Connect4Move(col));
+        }
+        return moves;
+    }
+
+    @Override
+    public Position makeMove(Position p, boolean player, Move move) {
+        if (!(p instanceof Connect4Position) || !(move instanceof Connect4Move)) return p;
+        Connect4Position cp = (Connect4Position) p;
+        Connect4Move cm = (Connect4Move) move;
+        return cp.play(cm.column);
+    }
+
+    /**
+     * Recherche le meilleur coup à la racine de l'arbre.
+     * Utilisé pour la Machine (tour IA) et pour le système d'Aide (Joker).
+     * 
+     * @param p Position courante
+     * @param depth Profondeur de recherche
+     * @param useAlphaBeta true pour Alpha-Bêta, false pour Minimax
+     * @return Le meilleur Connect4Move
+     */
+    public Connect4Move computeBestMove(Connect4Position p, int depth, boolean useAlphaBeta) {
+        this.maxPlayerColor = p.currentPlayer();
+        this.setPruning(useAlphaBeta);
+        this.setMaxDepth(depth);
+
+        // 1. Coup gagnant immédiat en 1 coup
+        for (int col : p.legalMoves()) {
+            Connect4Position sim = p.play(col);
+            if (sim.hasWon(maxPlayerColor)) {
+                return new Connect4Move(col);
+            }
+        }
+
+        // 2. Blocage immédiat d'une menace de victoire adverse au prochain coup
+        int oppColor = Connect4Position.opponent(maxPlayerColor);
+        for (int col : p.legalMoves()) {
+            Connect4Position simOpp = p.copy();
+            for (int r = Connect4Position.ROWS - 1; r >= 0; r--) {
+                if (simOpp.board[r][col] == Connect4Position.EMPTY) {
+                    simOpp.board[r][col] = oppColor;
+                    break;
+                }
+            }
+            if (simOpp.hasWon(oppColor)) {
+                return new Connect4Move(col); // Blocage vital
+            }
+        }
+
+        // 3. Recherche arborescente (Alpha-Bêta Slide 19 ou Minimax)
+        Move m = bestMove(p, depth);
+        if (m instanceof Connect4Move) {
+            return (Connect4Move) m;
+        }
+
+        // Repli sur le premier coup légal
+        List<Integer> legal = p.legalMoves();
+        return legal.isEmpty() ? null : new Connect4Move(legal.get(0));
+    }
+}
+package connect4.storage;
+
+import connect4.core.Connect4Position;
+import java.io.Serializable;
+
+/** 
+ * Objet sérialisable contenant tout ce qu'il faut pour reprendre une partie à l'identique. 
+ * Conçu par le Profil 2.
+ */
+public class GameState implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    /** Position de la grille (le joueur actif s'en déduit via nbMoves). */
+    public Connect4Position position;
+    /** "HUMAIN_VS_HUMAIN" ou "HUMAIN_VS_IA". */
+    public String gameMode;
+    /** "FACILE", "MOYEN" ou "DIFFICILE". */
+    public String difficulty;
+    /** "MINIMAX" ou "ALPHA_BETA" (stratégie de l'IA et de l'aide). */
+    public String strategy;
+    /** Nombre d'aides (jokers) encore disponibles. */
+    public int hintsLeft = 3;
+    /** Couleur du joueur humain en mode contre machine (RED ou YELLOW). */
+    public int humanColor = Connect4Position.RED;
+    /** Scores cumulés des deux joueurs. */
+    public int scoreRed, scoreYellow;
+
+    public GameState() {}
+
+    public GameState(Connect4Position position, String gameMode, String difficulty, String strategy, int hintsLeft) {
+        this.position = position;
+        this.gameMode = gameMode;
+        this.difficulty = difficulty;
+        this.strategy = strategy;
+        this.hintsLeft = hintsLeft;
+    }
+}
+# RAPPORT DE PROJET - DEVOIR 2 : PUISSANCE 4 (CONNECT 4)
+**Module :** Intelligence Artificielle  
+**Enseignant :** M'hamed AIT KBIR  
+**Date limite :** 26 nov. 23:59  
+**Membres du groupe :**
+- [Nom Prénom 1] - Profil 1 : Moteur IA & Stratégies de Recherche
+- [Nom Prénom 2] - Profil 2 : Architecte Logiciel, Moteur Métier & Persistance
+- [Nom Prénom 3] - Profil 3 : Interface Utilisateur, Intégration & Assurance Qualité
+
+---
+
+## 1. Introduction & Cahier des Charges
+- Présentation du jeu Puissance 4 (grille verticale 7x6, gravité, 4 pions consécutifs pour gagner, match nul si grille pleine).
+- Objectifs pédagogiques : application des algorithmes de recherche dans les jeux à deux joueurs à somme nulle (Minimax et élagage Alpha-Bêta).
+- Exigences satisfaites :
+  - Modification de `GameSearch` (Slide 19 : `max_Value` et `min_Value`).
+  - Système d'aide au joueur avec limitation d'utilisation (jokers).
+  - Gestion de la complexité (profondeur) et choix de stratégie.
+  - Modes 2 joueurs humains et humain vs machine.
+  - Sauvegarde et restitution.
+  - Rejet des coups non autorisés (colonnes pleines).
+
+---
+
+## 2. Architecture Logicielle & Hiérarchie des Classes (Profil 2)
+- Conformité avec les classes vues en cours :
+  - `Position` (abstraite) $\rightarrow$ `Connect4Position` (concrète)
+  - `Move` (abstraite) $\rightarrow$ `Connect4Move` (concrète)
+  - `GameSearch` (abstraite) $\rightarrow$ `Connect4Search` (concrète)
+- Gestion de la grille et de la gravité : descente des pions et détection des victoires (horizontale, verticale, diagonales).
+- Persistance : Sérialisation Java (`GameState` et `GameSaveManager`).
+
+---
+
+## 3. Moteur IA & Algorithmes de Recherche (Profil 1)
+### 3.1. Refonte de `GameSearch` (Diapositive 19)
+- Explication du remplacement de `alphaBetaHelper` par les deux fonctions récursives :
+  - `max_Value(Position p, float alpha, float beta, int depth)` : maximisation du joueur PROGRAM avec coupures $\beta$.
+  - `min_Value(Position p, float alpha, float beta, int depth)` : minimisation du joueur HUMAN avec coupures $\alpha$.
+### 3.2. Fonction d'évaluation Heuristique (`EvaluationFunction`)
+- Valorisation de la colonne centrale (colonne 3) : +6 points par pion.
+- Évaluation des fenêtres de 4 cases :
+  - 3 pions alliés + 1 vide : +50
+  - 2 pions alliés + 2 vides : +10
+  - 3 pions adverses + 1 vide : -80 (blocage d'urgence)
+### 3.3. Analyse de Complexité & Niveaux de Difficulté
+- Étude de l'impact de la profondeur de recherche sur le temps de décision :
+  - Facile : profondeur 2
+  - Moyen : profondeur 4
+  - Difficile : profondeur 6
+
+---
+
+## 4. Interface Utilisateur & Expérience Joueur (Profil 3)
+- Menus interactifs et navigation.
+- Système de jokers d'aide (décompte et suggestion visuelle du meilleur coup calculé par l'IA).
+- Messages d'erreur explicites lors de saisies invalides.
+
+---
+
+## 5. Jeux d'Essais & Validation
+- Tableau des tests effectués :
+  - Détection de victoire en ligne, colonne, diagonale montante et descendante.
+  - Test de grille pleine (match nul).
+  - Test de tentative d'insertion dans une colonne déjà saturée (rejet propre).
+  - Test de sauvegarde au tour 5 et reprise au tour 5 sans altération.
+
+---
+
+## 6. Conclusion
+- Bilan du travail en équipe et respect des délais.
